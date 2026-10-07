@@ -1,10 +1,11 @@
 {
-  "name": "mirkaylabafilesmece",
+  "name": "asoiaf-rpg",
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "DEV=1 node server.js"
   },
   "repository": {
     "type": "git",
@@ -20,5 +21,8 @@
   "dependencies": {
     "express": "^5.2.1",
     "socket.io": "^4.8.4"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

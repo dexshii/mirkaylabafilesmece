@@ -1,0 +1,13 @@
+{
+  "knight": "knight.svg",
+  "archer": "archer.svg",
+  "mystic": "mystic.svg",
+  "walker": "walker.svg",
+  "commander": "commander.svg",
+  "fire": "fire.svg",
+  "grass": "grass.svg",
+  "dirt": "dirt.svg",
+  "wall": "wall.svg",
+  "tree": "tree.svg",
+  "water": "water.svg"
+}

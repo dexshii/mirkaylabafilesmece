@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="eye"><stop offset="0" stop-color="#fff"/><stop offset=".4" stop-color="#7fd4ff"/><stop offset="1" stop-color="#1e6fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="ice" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6f4ff"/><stop offset="1" stop-color="#6d8fb0"/></linearGradient>
+  </defs>
+  <path d="M18 24 L8 60 L56 60 L46 24 Z" fill="#9fb8d0" stroke="#3d5670" stroke-width="1.5"/>
+  <path d="M12 60 L18 40 L22 60 M42 60 L46 40 L52 60" fill="#c8dcef" opacity=".7"/>
+  <path d="M22 26 H42 L44 52 H20 Z" fill="url(#ice)" stroke="#3d5670"/>
+  <path d="M24 32 L32 36 L40 32 M24 40 L32 44 L40 40" stroke="#5a7a99" stroke-width="1.5" fill="none"/>
+  <path d="M22 26 C20 12 26 4 32 4 C38 4 44 12 42 26 Z" fill="#d8e8f5" stroke="#3d5670" stroke-width="1.5"/>
+  <path d="M24 8 L22 2 L27 6 L30 0 L32 5 L35 0 L37 6 L42 2 L40 8" fill="#e6f4ff" stroke="#3d5670" stroke-width="1"/>
+  <path d="M26 22 Q32 26 38 22" stroke="#6a85a0" stroke-width="1.5" fill="none"/>
+  <circle cx="27.5" cy="15" r="5" fill="url(#eye)"/>
+  <circle cx="36.5" cy="15" r="5" fill="url(#eye)"/>
+  <circle cx="27.5" cy="15" r="1.5" fill="#fff"/>
+  <circle cx="36.5" cy="15" r="1.5" fill="#fff"/>
+  <path d="M52 62 L54 10" stroke="#dce9f5" stroke-width="2.5"/>
+  <path d="M54 10 L50 4 L54 -2 L58 4 Z" fill="#bfe6ff" stroke="#3d7ab0" stroke-width="1"/>
+  <path d="M54 2 L54 8" stroke="#ffffff" stroke-width="1"/>
+</svg>
