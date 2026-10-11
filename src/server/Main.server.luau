@@ -1,5 +1,7 @@
 -- Server entry point: remotes, summons, traits, team, starting and ending battles.
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
 
 local Shared = game.ReplicatedStorage.Shared
 local Net = require(Shared.Net)
@@ -15,9 +17,18 @@ local Battle = require(script.Parent.Battle)
 local Lobby = require(script.Parent.Lobby)
 local MapBuilder = require(script.Parent.MapBuilder)
 
+-- Campaign and challenge battles run in their own reserved server: the lobby teleports the player there with
+-- the battle in the teleport data, and the battle server sends them back when they leave. In Studio (where
+-- teleports don't work) battles run in an arena next to the lobby instead.
+local IS_BATTLE_SERVER = game.PrivateServerId ~= "" and game.PrivateServerOwnerId == 0
+local CAN_TELEPORT = not RunService:IsStudio() and game.PlaceId ~= 0
+workspace:SetAttribute("BattleServer", IS_BATTLE_SERVER)
+
 Net.setup()
 Battle.init()
-Lobby.build()
+if not IS_BATTLE_SERVER then
+	Lobby.build()
+end
 
 local SUMMON_COST = { [1] = 50, [10] = 450 }
 
@@ -278,8 +289,31 @@ local function rewardsFor(data, battle, won: boolean)
 	return result
 end
 
-local function endBattle(player: Player)
+local endBattle: (Player) -> ()
+local travel: (Player, TeleportOptions?, string) -> (boolean, string?)
+
+-- from a battle server: back to a lobby server
+local function sendHome(player: Player)
+	for attempt = 1, 3 do
+		if travel(player, nil, "Returning to the lobby...") or not player.Parent then
+			return
+		end
+		task.wait(2 * attempt)
+	end
+	player:Kick("Couldn't return you to the lobby. Your progress is saved: please rejoin.")
+end
+
+function endBattle(player: Player)
 	local battle = battles[player]
+	if IS_BATTLE_SERVER then
+		battles[player] = nil
+		if battle then
+			pcall(battle.destroy, battle)
+		end
+		Net.ev("BattleState"):FireClient(player, { active = false })
+		task.spawn(sendHome, player)
+		return
+	end
 	if not battle then
 		return
 	end
@@ -290,14 +324,15 @@ local function endBattle(player: Player)
 	end
 	Net.ev("BattleState"):FireClient(player, { active = false })
 	teleport(player, Lobby.spawnCFrame())
-	-- the arena slot is free again once its terrain is gone
+	-- the arena slot is free again
 	task.spawn(function()
 		MapBuilder.clear(battle.origin)
 		slotsInUse[battle.slot] = nil
 	end)
 end
 
-handle("StartBattle", function(player, kind, id, stage)
+-- checks a battle request; returns ok, an error message, and what start() needs
+local function prepare(player: Player, kind: any, id: any, stage: any): (boolean, string?, any)
 	local data = DataService.get(player)
 	if not data then
 		return false, "Your data is still loading"
@@ -342,7 +377,11 @@ handle("StartBattle", function(player, kind, id, stage)
 	if not any then
 		return false, "Equip at least one unit on your team first"
 	end
+	return true, nil, { mapId = mapId, stage = stage, challenge = challenge, team = team }
+end
 
+local function start(player: Player, info)
+	local mapId, stage, challenge, team = info.mapId, info.stage, info.challenge, info.team
 	local slot = 1
 	while slotsInUse[slot] do
 		slot += 1
@@ -368,6 +407,64 @@ handle("StartBattle", function(player, kind, id, stage)
 	})
 	battles[player] = battle
 	teleport(player, battle:spawnPoint())
+end
+
+-- the screen the client shows while it's being teleported (nil hides it)
+local function setTravel(player: Player, text: string?)
+	player:SetAttribute("Travel", text)
+end
+
+local teleporting: { [Player]: boolean } = {}
+
+-- saves the player's data, then teleports them; on failure their data is theirs to save here again
+function travel(player: Player, options: TeleportOptions?, text: string): (boolean, string?)
+	if teleporting[player] then
+		return false, "Already on the way"
+	end
+	teleporting[player] = true
+	setTravel(player, text)
+	DataService.release(player)
+	local ok, err = pcall(function()
+		TeleportService:TeleportAsync(game.PlaceId, { player }, options)
+	end)
+	if not ok then
+		teleporting[player] = nil
+		DataService.resume(player)
+		setTravel(player, nil)
+		warn("[StarKingdomDefense] teleport failed: " .. tostring(err))
+		return false, "Couldn't reach the server, try again"
+	end
+	return true
+end
+
+TeleportService.TeleportInitFailed:Connect(function(player, result, message)
+	if teleporting[player] then
+		teleporting[player] = nil
+		DataService.resume(player)
+		setTravel(player, nil)
+		warn("[StarKingdomDefense] teleport failed: " .. tostring(result) .. " " .. tostring(message))
+	end
+end)
+
+handle("StartBattle", function(player, kind, id, stage)
+	local ok, msg, info = prepare(player, kind, id, stage)
+	if not ok then
+		return false, msg
+	end
+	if CAN_TELEPORT and not IS_BATTLE_SERVER then
+		local reserved, code = pcall(function()
+			return TeleportService:ReserveServer(game.PlaceId)
+		end)
+		if not reserved then
+			return false, "Couldn't reserve a battle server, try again"
+		end
+		local options = Instance.new("TeleportOptions")
+		options.ReservedServerAccessCode = code
+		options:SetTeleportData({ battle = { kind = kind, id = id, stage = stage } })
+		task.spawn(travel, player, options, "Warping to " .. Maps.ById[info.mapId].name .. "...")
+		return true, "teleport"
+	end
+	start(player, info)
 	return true
 end)
 
@@ -455,8 +552,6 @@ end)
 
 -- user ids that may use the admin panel; the game's owner and anyone testing in Studio always may
 local ADMINS: { number } = {}
-
-local RunService = game:GetService("RunService")
 
 local function isAdmin(player: Player): boolean
 	return RunService:IsStudio() or player.UserId == game.CreatorId or table.find(ADMINS, player.UserId) ~= nil
@@ -590,6 +685,35 @@ for _, p in Players:GetPlayers() do
 	onPlayer(p)
 end
 Players.PlayerAdded:Connect(onPlayer)
+
+-- a battle server starts the battle that the player was teleported with
+if IS_BATTLE_SERVER then
+	local function arrive(player: Player)
+		local joinData = player:GetJoinData()
+		local request = type(joinData.TeleportData) == "table" and (joinData.TeleportData :: any).battle
+		if not DataService.waitFor(player, 30) or not player.Parent then
+			return
+		end
+		if type(request) ~= "table" then
+			sendHome(player)
+			return
+		end
+		if not player.Character then
+			player.CharacterAdded:Wait()
+		end
+		local ok, msg, info = prepare(player, request.kind, request.id, request.stage)
+		if not ok then
+			warn("[StarKingdomDefense] battle request refused: " .. tostring(msg))
+			sendHome(player)
+			return
+		end
+		start(player, info)
+	end
+	Players.PlayerAdded:Connect(arrive)
+	for _, p in Players:GetPlayers() do
+		task.spawn(arrive, p)
+	end
+end
 
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(function()

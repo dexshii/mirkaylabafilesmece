@@ -222,17 +222,23 @@ function Fx.start()
 	folder = Instance.new("Folder")
 	folder.Name = "ClientFx"
 	folder.Parent = workspace
-	Net.ev("Fx").OnClientEvent:Connect(function(p)
-		local handler = handlers[p.style]
-		if handler then
-			handler(p)
-		end
-		chainArcs(p)
-		if p.tower then
-			Animator.attack(p.tower)
-		end
-		if p.dmg and p.to then
-			damageNumber(p.to, p.dmg, p.color or Color3.new(1, 1, 1))
+	-- the server sends each frame's effects as one list
+	Net.ev("Fx").OnClientEvent:Connect(function(list)
+		local numbers = 0
+		for _, p in list do
+			local handler = handlers[p.style]
+			if handler then
+				handler(p)
+			end
+			chainArcs(p)
+			if p.tower then
+				Animator.attack(p.tower)
+			end
+			-- at most a few damage numbers per frame, so big fights stay smooth
+			if p.dmg and p.to and numbers < 6 then
+				numbers += 1
+				damageNumber(p.to, p.dmg, p.color or Color3.new(1, 1, 1))
+			end
 		end
 	end)
 end

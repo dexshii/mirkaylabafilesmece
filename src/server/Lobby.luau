@@ -227,23 +227,44 @@ local function buildDecor(lobby: Instance)
 	end
 end
 
-local function buildTerrain(lobby: Instance)
-	-- real terrain instead of the flat floor part: a grass meadow, hills around it and a pond
-	local terrain = workspace.Terrain
-	terrain:FillBlock(CFrame.new(0, -6, 0), Vector3.new(440, 12, 440), Enum.Material.Grass)
+local function buildGround(lobby: Instance)
+	-- a wide grass floor with round cartoon hills around it and two ponds
+	local floor = lobby:FindFirstChild("Floor") :: BasePart?
+	if floor then
+		floor.Size = Vector3.new(440, 4, 440)
+	end
 	local rng = Random.new(11)
 	for i = 1, 18 do
 		local a = i / 18 * math.pi * 2 + rng:NextNumber(-0.15, 0.15)
-		local r = rng:NextNumber(150, 200)
-		terrain:FillBall(Vector3.new(math.cos(a) * r, -6, math.sin(a) * r), rng:NextNumber(26, 46), rng:NextNumber() < 0.8 and Enum.Material.LeafyGrass or Enum.Material.Rock)
+		local r = rng:NextNumber(165, 205)
+		local hill = Instance.new("Part")
+		hill.Shape = Enum.PartType.Ball
+		hill.Anchored = true
+		hill.Size = Vector3.one * rng:NextNumber(50, 90)
+		hill.Position = Vector3.new(math.cos(a) * r, -hill.Size.Y * 0.2, math.sin(a) * r)
+		hill.Color = Color3.fromRGB(70, 170, 70):Lerp(Color3.fromRGB(120, 200, 80), rng:NextNumber())
+		hill.Material = Enum.Material.SmoothPlastic
+		hill.CastShadow = false
+		hill.Parent = lobby
 	end
-	terrain:FillCylinder(CFrame.new(78, -2, -70), 4, 18, Enum.Material.Air)
-	terrain:FillCylinder(CFrame.new(78, -3, -70), 2, 18, Enum.Material.Water)
-	terrain:FillCylinder(CFrame.new(-80, -2, 30), 4, 14, Enum.Material.Air)
-	terrain:FillCylinder(CFrame.new(-80, -3, 30), 2, 14, Enum.Material.Water)
-	local floor = lobby:FindFirstChild("Floor")
-	if floor then
-		floor:Destroy()
+	for _, pond in { { Vector3.new(78, 0.05, -70), 36 }, { Vector3.new(-80, 0.05, 30), 28 } } do
+		local water = Instance.new("Part")
+		water.Shape = Enum.PartType.Cylinder
+		water.Anchored = true
+		water.CanCollide = false
+		water.Size = Vector3.new(0.3, pond[2], pond[2])
+		water.CFrame = CFrame.new(pond[1]) * CFrame.Angles(0, 0, math.rad(90))
+		water.Color = Color3.fromRGB(60, 160, 255)
+		water.Material = Enum.Material.Glass
+		water.Transparency = 0.15
+		water.Parent = lobby
+		local rim = water:Clone()
+		rim.Size = Vector3.new(0.25, pond[2] + 3, pond[2] + 3)
+		rim.Color = Color3.fromRGB(200, 190, 160)
+		rim.Material = Enum.Material.SmoothPlastic
+		rim.Transparency = 0
+		rim.CFrame = water.CFrame * CFrame.new(-0.03, 0, 0)
+		rim.Parent = lobby
 	end
 end
 
@@ -251,7 +272,7 @@ function Lobby.build()
 	local lobby = workspace:FindFirstChild("Lobby") or Instance.new("Model")
 	lobby.Name = "Lobby"
 	lobby.Parent = workspace
-	buildTerrain(lobby)
+	buildGround(lobby)
 	buildDecor(lobby)
 	buildCastle(lobby)
 	buildSummonHall(lobby)

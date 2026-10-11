@@ -85,8 +85,10 @@ function Battle.new(player: Player, opts: { [string]: any })
 	self.stateClock = 0
 	self.kills = 0
 
+	self.fxQueue = {}
 	self.conn = RunService.Heartbeat:Connect(function(dt)
 		self:step(math.min(dt, 0.1) * self.speed)
+		self:flushFx()
 		self.stateClock += dt
 		if self.stateClock >= STATE_INTERVAL then
 			self.stateClock = 0
@@ -657,15 +659,16 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 	ring.CanQuery = false
 	ring.Parent = model
 
-	-- a cartoon outline, coloured for Legendary and Mythic units, and a sparkle aura on those
+	-- Legendary and Mythic units get a rarity-coloured outline and a sparkle aura (only these: Roblox draws at
+	-- most 31 Highlights, and each one costs a render pass)
 	local rank = Rarities.Info[def.rarity].rank
-	local outline = Instance.new("Highlight")
-	outline.FillTransparency = 1
-	outline.OutlineTransparency = 0
-	outline.OutlineColor = rank >= 3 and Rarities.Info[def.rarity].color or Color3.fromRGB(20, 15, 30)
-	outline.DepthMode = Enum.HighlightDepthMode.Occluded
-	outline.Parent = model
 	if rank >= 3 then
+		local outline = Instance.new("Highlight")
+		outline.FillTransparency = 1
+		outline.OutlineTransparency = 0
+		outline.OutlineColor = Rarities.Info[def.rarity].color
+		outline.DepthMode = Enum.HighlightDepthMode.Occluded
+		outline.Parent = model
 		local aura = Instance.new("ParticleEmitter")
 		aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
 		aura.Color = ColorSequence.new(Rarities.Info[def.rarity].color)
@@ -887,9 +890,18 @@ end
 
 -- ============================================================ client sync
 
+-- effects are queued and sent once per frame as one list, instead of one remote event per attack
 function Battle:fx(payload: { [string]: any })
-	if self.player.Parent then
-		fxEvent:FireClient(self.player, payload)
+	table.insert(self.fxQueue, payload)
+end
+
+function Battle:flushFx()
+	local queue = self.fxQueue
+	if #queue > 0 then
+		self.fxQueue = {}
+		if self.player.Parent then
+			fxEvent:FireClient(self.player, queue)
+		end
 	end
 end
 

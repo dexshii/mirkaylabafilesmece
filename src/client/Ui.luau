@@ -279,11 +279,26 @@ end
 
 -- ============================================================ animation
 
+-- whether a gui object is actually on screen (it and every ancestor visible, its ScreenGui enabled)
+local function onScreen(obj: Instance): boolean
+	local node: Instance? = obj
+	while node do
+		if node:IsA("GuiObject") then
+			if not node.Visible then
+				return false
+			end
+		elseif node:IsA("LayerCollector") then
+			return node.Enabled and node:IsDescendantOf(game)
+		end
+		node = node.Parent
+	end
+	return false
+end
 -- every registered gradient spins (mythic cards, banners)
 local spinning: { [UIGradient]: number } = setmetatable({}, { __mode = "k" }) :: any
 RunService.RenderStepped:Connect(function(dt)
 	for g, speed in spinning do
-		if g.Parent then
+		if g.Parent and onScreen(g.Parent) then
 			g.Rotation = (g.Rotation + dt * speed) % 360
 		end
 	end
@@ -374,10 +389,18 @@ end
 -- ============================================================ models
 
 local viewportSpin: { [ViewportFrame]: { camera: Camera, center: Vector3, dist: number, angle: number } } = setmetatable({}, { __mode = "k" }) :: any
+-- viewports re-render whenever their camera moves: turn only the visible ones, at 30 fps
+local spinClock = 0
 RunService.RenderStepped:Connect(function(dt)
+	spinClock += dt
+	if spinClock < 1 / 30 then
+		return
+	end
+	local step = spinClock
+	spinClock = 0
 	for vp, s in viewportSpin do
-		if vp.Parent and vp.Visible then
-			s.angle += dt * 0.8
+		if onScreen(vp) then
+			s.angle += step * 0.8
 			s.camera.CFrame = CFrame.lookAt(s.center + Vector3.new(math.sin(s.angle) * s.dist, s.dist * 0.25, -math.cos(s.angle) * s.dist), s.center)
 		end
 	end

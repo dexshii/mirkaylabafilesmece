@@ -10,12 +10,14 @@ local Ui = require(script.Parent.Ui)
 local Skins = require(script.Parent.Skins)
 local Animator = require(script.Parent.Animator)
 local AdminPanel = require(script.Parent.AdminPanel)
+local Travel = require(script.Parent.Travel)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 end)
 
 Store.start()
+Travel.start()
 Fx.start()
 Skins.start()
 Animator.start()
@@ -29,8 +31,11 @@ local lobbyGui = LobbyUI.start()
 local battleGui = BattleUI.start()
 AdminPanel.start()
 
+-- a battle server has no lobby: its menus stay hidden
+local battleServer = workspace:GetAttribute("BattleServer") == true
+LobbyUI.setVisible(not battleServer)
 Store.BattleChanged:Connect(function(state)
-	LobbyUI.setVisible(not state.active)
+	LobbyUI.setVisible(not state.active and not battleServer)
 end)
 
 -- scale the UI down on small screens

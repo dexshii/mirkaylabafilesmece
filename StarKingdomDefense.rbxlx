@@ -1858,8 +1858,10 @@ function Battle.new(player: Player, opts: { [string]: any })
 	self.stateClock = 0
 	self.kills = 0
 
+	self.fxQueue = {}
 	self.conn = RunService.Heartbeat:Connect(function(dt)
 		self:step(math.min(dt, 0.1) * self.speed)
+		self:flushFx()
 		self.stateClock += dt
 		if self.stateClock >= STATE_INTERVAL then
 			self.stateClock = 0
@@ -2430,15 +2432,16 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 	ring.CanQuery = false
 	ring.Parent = model
 
-	-- a cartoon outline, coloured for Legendary and Mythic units, and a sparkle aura on those
+	-- Legendary and Mythic units get a rarity-coloured outline and a sparkle aura (only these: Roblox draws at
+	-- most 31 Highlights, and each one costs a render pass)
 	local rank = Rarities.Info[def.rarity].rank
-	local outline = Instance.new("Highlight")
-	outline.FillTransparency = 1
-	outline.OutlineTransparency = 0
-	outline.OutlineColor = rank >= 3 and Rarities.Info[def.rarity].color or Color3.fromRGB(20, 15, 30)
-	outline.DepthMode = Enum.HighlightDepthMode.Occluded
-	outline.Parent = model
 	if rank >= 3 then
+		local outline = Instance.new("Highlight")
+		outline.FillTransparency = 1
+		outline.OutlineTransparency = 0
+		outline.OutlineColor = Rarities.Info[def.rarity].color
+		outline.DepthMode = Enum.HighlightDepthMode.Occluded
+		outline.Parent = model
 		local aura = Instance.new("ParticleEmitter")
 		aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
 		aura.Color = ColorSequence.new(Rarities.Info[def.rarity].color)
@@ -2660,9 +2663,18 @@ end
 
 -- ============================================================ client sync
 
+-- effects are queued and sent once per frame as one list, instead of one remote event per attack
 function Battle:fx(payload: { [string]: any })
-	if self.player.Parent then
-		fxEvent:FireClient(self.player, payload)
+	table.insert(self.fxQueue, payload)
+end
+
+function Battle:flushFx()
+	local queue = self.fxQueue
+	if #queue > 0 then
+		self.fxQueue = {}
+		if self.player.Parent then
+			fxEvent:FireClient(self.player, queue)
+		end
 	end
 end
 
@@ -2784,6 +2796,7 @@ end)
 
 local profiles: { [Player]: Data } = {}
 local canSave: { [Player]: boolean } = {} -- only after a successful load, so a failed load never overwrites a save
+local loadedOk: { [Player]: boolean } = {}
 local saving: { [Player]: boolean } = {}
 local changedCallback: ((Player, Data) -> ())? = nil
 
@@ -2850,7 +2863,10 @@ local function load(player: Player): (Data, boolean)
 	end
 	for attempt = 1, 3 do
 		local ok, result = pcall(function()
-			return (store :: DataStore):GetAsync("p_" .. player.UserId)
+			-- no cache: the player may have just come from another server that saved a moment ago
+			local options = Instance.new("DataStoreGetOptions")
+			options.UseCache = false
+			return (store :: DataStore):GetAsync("p_" .. player.UserId, options)
 		end)
 		if ok then
 			return reconcile(result), true
@@ -2876,6 +2892,21 @@ function DataService.save(player: Player)
 	if not ok then
 		warnOnce("DataStore save failed: " .. tostring(err))
 	end
+end
+
+-- saves now (waiting for a save in progress) and stops this server from saving again, before the player is
+-- teleported to another server that will load their data
+function DataService.release(player: Player)
+	while saving[player] do
+		task.wait(0.1)
+	end
+	DataService.save(player)
+	canSave[player] = false
+end
+
+-- undoes release when the teleport failed
+function DataService.resume(player: Player)
+	canSave[player] = loadedOk[player] == true
 end
 
 function DataService.get(player: Player): Data?
@@ -2915,6 +2946,7 @@ function DataService.start()
 		if player.Parent then
 			profiles[player] = data
 			canSave[player] = ok
+			loadedOk[player] = ok
 			DataService.changed(player)
 		end
 	end
@@ -2926,6 +2958,7 @@ function DataService.start()
 		DataService.save(player)
 		profiles[player] = nil
 		canSave[player] = nil
+		loadedOk[player] = nil
 	end)
 	game:BindToClose(function()
 		for _, p in Players:GetPlayers() do
@@ -3188,23 +3221,44 @@ local function buildDecor(lobby: Instance)
 	end
 end
 
-local function buildTerrain(lobby: Instance)
-	-- real terrain instead of the flat floor part: a grass meadow, hills around it and a pond
-	local terrain = workspace.Terrain
-	terrain:FillBlock(CFrame.new(0, -6, 0), Vector3.new(440, 12, 440), Enum.Material.Grass)
+local function buildGround(lobby: Instance)
+	-- a wide grass floor with round cartoon hills around it and two ponds
+	local floor = lobby:FindFirstChild("Floor") :: BasePart?
+	if floor then
+		floor.Size = Vector3.new(440, 4, 440)
+	end
 	local rng = Random.new(11)
 	for i = 1, 18 do
 		local a = i / 18 * math.pi * 2 + rng:NextNumber(-0.15, 0.15)
-		local r = rng:NextNumber(150, 200)
-		terrain:FillBall(Vector3.new(math.cos(a) * r, -6, math.sin(a) * r), rng:NextNumber(26, 46), rng:NextNumber() < 0.8 and Enum.Material.LeafyGrass or Enum.Material.Rock)
+		local r = rng:NextNumber(165, 205)
+		local hill = Instance.new("Part")
+		hill.Shape = Enum.PartType.Ball
+		hill.Anchored = true
+		hill.Size = Vector3.one * rng:NextNumber(50, 90)
+		hill.Position = Vector3.new(math.cos(a) * r, -hill.Size.Y * 0.2, math.sin(a) * r)
+		hill.Color = Color3.fromRGB(70, 170, 70):Lerp(Color3.fromRGB(120, 200, 80), rng:NextNumber())
+		hill.Material = Enum.Material.SmoothPlastic
+		hill.CastShadow = false
+		hill.Parent = lobby
 	end
-	terrain:FillCylinder(CFrame.new(78, -2, -70), 4, 18, Enum.Material.Air)
-	terrain:FillCylinder(CFrame.new(78, -3, -70), 2, 18, Enum.Material.Water)
-	terrain:FillCylinder(CFrame.new(-80, -2, 30), 4, 14, Enum.Material.Air)
-	terrain:FillCylinder(CFrame.new(-80, -3, 30), 2, 14, Enum.Material.Water)
-	local floor = lobby:FindFirstChild("Floor")
-	if floor then
-		floor:Destroy()
+	for _, pond in { { Vector3.new(78, 0.05, -70), 36 }, { Vector3.new(-80, 0.05, 30), 28 } } do
+		local water = Instance.new("Part")
+		water.Shape = Enum.PartType.Cylinder
+		water.Anchored = true
+		water.CanCollide = false
+		water.Size = Vector3.new(0.3, pond[2], pond[2])
+		water.CFrame = CFrame.new(pond[1]) * CFrame.Angles(0, 0, math.rad(90))
+		water.Color = Color3.fromRGB(60, 160, 255)
+		water.Material = Enum.Material.Glass
+		water.Transparency = 0.15
+		water.Parent = lobby
+		local rim = water:Clone()
+		rim.Size = Vector3.new(0.25, pond[2] + 3, pond[2] + 3)
+		rim.Color = Color3.fromRGB(200, 190, 160)
+		rim.Material = Enum.Material.SmoothPlastic
+		rim.Transparency = 0
+		rim.CFrame = water.CFrame * CFrame.new(-0.03, 0, 0)
+		rim.Parent = lobby
 	end
 end
 
@@ -3212,7 +3266,7 @@ function Lobby.build()
 	local lobby = workspace:FindFirstChild("Lobby") or Instance.new("Model")
 	lobby.Name = "Lobby"
 	lobby.Parent = workspace
-	buildTerrain(lobby)
+	buildGround(lobby)
 	buildDecor(lobby)
 	buildCastle(lobby)
 	buildSummonHall(lobby)
@@ -3229,6 +3283,8 @@ return Lobby
           <token name="RunContext">0</token>
           <string name="Source"><![CDATA[-- Server entry point: remotes, summons, traits, team, starting and ending battles.
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
 
 local Shared = game.ReplicatedStorage.Shared
 local Net = require(Shared.Net)
@@ -3244,9 +3300,18 @@ local Battle = require(script.Parent.Battle)
 local Lobby = require(script.Parent.Lobby)
 local MapBuilder = require(script.Parent.MapBuilder)
 
+-- Campaign and challenge battles run in their own reserved server: the lobby teleports the player there with
+-- the battle in the teleport data, and the battle server sends them back when they leave. In Studio (where
+-- teleports don't work) battles run in an arena next to the lobby instead.
+local IS_BATTLE_SERVER = game.PrivateServerId ~= "" and game.PrivateServerOwnerId == 0
+local CAN_TELEPORT = not RunService:IsStudio() and game.PlaceId ~= 0
+workspace:SetAttribute("BattleServer", IS_BATTLE_SERVER)
+
 Net.setup()
 Battle.init()
-Lobby.build()
+if not IS_BATTLE_SERVER then
+	Lobby.build()
+end
 
 local SUMMON_COST = { [1] = 50, [10] = 450 }
 
@@ -3507,8 +3572,31 @@ local function rewardsFor(data, battle, won: boolean)
 	return result
 end
 
-local function endBattle(player: Player)
+local endBattle: (Player) -> ()
+local travel: (Player, TeleportOptions?, string) -> (boolean, string?)
+
+-- from a battle server: back to a lobby server
+local function sendHome(player: Player)
+	for attempt = 1, 3 do
+		if travel(player, nil, "Returning to the lobby...") or not player.Parent then
+			return
+		end
+		task.wait(2 * attempt)
+	end
+	player:Kick("Couldn't return you to the lobby. Your progress is saved: please rejoin.")
+end
+
+function endBattle(player: Player)
 	local battle = battles[player]
+	if IS_BATTLE_SERVER then
+		battles[player] = nil
+		if battle then
+			pcall(battle.destroy, battle)
+		end
+		Net.ev("BattleState"):FireClient(player, { active = false })
+		task.spawn(sendHome, player)
+		return
+	end
 	if not battle then
 		return
 	end
@@ -3519,14 +3607,15 @@ local function endBattle(player: Player)
 	end
 	Net.ev("BattleState"):FireClient(player, { active = false })
 	teleport(player, Lobby.spawnCFrame())
-	-- the arena slot is free again once its terrain is gone
+	-- the arena slot is free again
 	task.spawn(function()
 		MapBuilder.clear(battle.origin)
 		slotsInUse[battle.slot] = nil
 	end)
 end
 
-handle("StartBattle", function(player, kind, id, stage)
+-- checks a battle request; returns ok, an error message, and what start() needs
+local function prepare(player: Player, kind: any, id: any, stage: any): (boolean, string?, any)
 	local data = DataService.get(player)
 	if not data then
 		return false, "Your data is still loading"
@@ -3571,7 +3660,11 @@ handle("StartBattle", function(player, kind, id, stage)
 	if not any then
 		return false, "Equip at least one unit on your team first"
 	end
+	return true, nil, { mapId = mapId, stage = stage, challenge = challenge, team = team }
+end
 
+local function start(player: Player, info)
+	local mapId, stage, challenge, team = info.mapId, info.stage, info.challenge, info.team
 	local slot = 1
 	while slotsInUse[slot] do
 		slot += 1
@@ -3597,6 +3690,64 @@ handle("StartBattle", function(player, kind, id, stage)
 	})
 	battles[player] = battle
 	teleport(player, battle:spawnPoint())
+end
+
+-- the screen the client shows while it's being teleported (nil hides it)
+local function setTravel(player: Player, text: string?)
+	player:SetAttribute("Travel", text)
+end
+
+local teleporting: { [Player]: boolean } = {}
+
+-- saves the player's data, then teleports them; on failure their data is theirs to save here again
+function travel(player: Player, options: TeleportOptions?, text: string): (boolean, string?)
+	if teleporting[player] then
+		return false, "Already on the way"
+	end
+	teleporting[player] = true
+	setTravel(player, text)
+	DataService.release(player)
+	local ok, err = pcall(function()
+		TeleportService:TeleportAsync(game.PlaceId, { player }, options)
+	end)
+	if not ok then
+		teleporting[player] = nil
+		DataService.resume(player)
+		setTravel(player, nil)
+		warn("[StarKingdomDefense] teleport failed: " .. tostring(err))
+		return false, "Couldn't reach the server, try again"
+	end
+	return true
+end
+
+TeleportService.TeleportInitFailed:Connect(function(player, result, message)
+	if teleporting[player] then
+		teleporting[player] = nil
+		DataService.resume(player)
+		setTravel(player, nil)
+		warn("[StarKingdomDefense] teleport failed: " .. tostring(result) .. " " .. tostring(message))
+	end
+end)
+
+handle("StartBattle", function(player, kind, id, stage)
+	local ok, msg, info = prepare(player, kind, id, stage)
+	if not ok then
+		return false, msg
+	end
+	if CAN_TELEPORT and not IS_BATTLE_SERVER then
+		local reserved, code = pcall(function()
+			return TeleportService:ReserveServer(game.PlaceId)
+		end)
+		if not reserved then
+			return false, "Couldn't reserve a battle server, try again"
+		end
+		local options = Instance.new("TeleportOptions")
+		options.ReservedServerAccessCode = code
+		options:SetTeleportData({ battle = { kind = kind, id = id, stage = stage } })
+		task.spawn(travel, player, options, "Warping to " .. Maps.ById[info.mapId].name .. "...")
+		return true, "teleport"
+	end
+	start(player, info)
 	return true
 end)
 
@@ -3684,8 +3835,6 @@ end)
 
 -- user ids that may use the admin panel; the game's owner and anyone testing in Studio always may
 local ADMINS: { number } = {}
-
-local RunService = game:GetService("RunService")
 
 local function isAdmin(player: Player): boolean
 	return RunService:IsStudio() or player.UserId == game.CreatorId or table.find(ADMINS, player.UserId) ~= nil
@@ -3819,6 +3968,35 @@ for _, p in Players:GetPlayers() do
 	onPlayer(p)
 end
 Players.PlayerAdded:Connect(onPlayer)
+
+-- a battle server starts the battle that the player was teleported with
+if IS_BATTLE_SERVER then
+	local function arrive(player: Player)
+		local joinData = player:GetJoinData()
+		local request = type(joinData.TeleportData) == "table" and (joinData.TeleportData :: any).battle
+		if not DataService.waitFor(player, 30) or not player.Parent then
+			return
+		end
+		if type(request) ~= "table" then
+			sendHome(player)
+			return
+		end
+		if not player.Character then
+			player.CharacterAdded:Wait()
+		end
+		local ok, msg, info = prepare(player, request.kind, request.id, request.stage)
+		if not ok then
+			warn("[StarKingdomDefense] battle request refused: " .. tostring(msg))
+			sendHome(player)
+			return
+		end
+		start(player, info)
+	end
+	Players.PlayerAdded:Connect(arrive)
+	for _, p in Players:GetPlayers() do
+		task.spawn(arrive, p)
+	end
+end
 
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(function()
@@ -4283,27 +4461,8 @@ end
 
 -- ============================================================ build
 
--- terrain materials per map: the field's surface, the cliffs under it, the lowland around it, and its lakes
-local TERRAIN = {
-	meadow = { field = Enum.Material.Grass, cliff = Enum.Material.Rock, world = Enum.Material.LeafyGrass, lake = Enum.Material.Water },
-	desert = { field = Enum.Material.Sand, cliff = Enum.Material.Sandstone, world = Enum.Material.Sand, lake = Enum.Material.Water },
-	frost = { field = Enum.Material.Snow, cliff = Enum.Material.Glacier, world = Enum.Material.Snow, lake = Enum.Material.Ice },
-	magma = { field = Enum.Material.Basalt, cliff = Enum.Material.Basalt, world = Enum.Material.Basalt, lake = Enum.Material.CrackedLava },
-	starcastle = { field = Enum.Material.Pavement, cliff = Enum.Material.Limestone, world = Enum.Material.Slate, lake = Enum.Material.Water },
-}
-
--- removes a map's terrain
--- in chunks (one huge region at once can fail); yields
-function MapBuilder.clear(origin: Vector3)
-	for x = -500, 375, 125 do
-		for z = -500, 375, 125 do
-			pcall(function()
-				workspace.Terrain:FillBlock(CFrame.new(origin + Vector3.new(x + 62.5, 20, z + 62.5)), Vector3.new(128, 100, 128), Enum.Material.Air)
-			end)
-		end
-		task.wait()
-	end
-end
+-- maps are built from parts only; kept so callers that clear an arena's area still work
+function MapBuilder.clear(_origin: Vector3) end
 
 local function nearPath(waypoints: { { number } }, x: number, z: number, margin: number): boolean
 	for i = 1, #waypoints - 1 do
@@ -4327,42 +4486,36 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 	arena.Name = "Arena_" .. def.id
 	local half = Maps.FieldHalf
 
-	-- the play field and the world around it are Roblox Terrain; units are placed on an invisible "Ground" part
-	local terrain = workspace.Terrain
-	local look = TERRAIN[def.id]
-	-- the raised field: rock cliffs with the theme's material on top
-	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -10, 0)), Vector3.new(half * 2 + 8, 12, half * 2 + 8), look.cliff)
-	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -2, 0)), Vector3.new(half * 2 + 8, 4, half * 2 + 8), look.field)
-	-- the lowland around it, with hills and lakes
-	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -20, 0)), Vector3.new(1100, 12, 1100), look.world)
-	for _ = 1, 22 do
-		local a = rng:NextNumber(0, math.pi * 2)
-		local r = rng:NextNumber(130, 420)
-		local size = rng:NextNumber(30, 70)
-		terrain:FillBall(origin + Vector3.new(math.cos(a) * r, -16, math.sin(a) * r), size, rng:NextNumber() < 0.7 and look.world or look.cliff)
-	end
-	for _ = 1, 3 do
-		local a = rng:NextNumber(0, math.pi * 2)
-		local r = rng:NextNumber(110, 260)
-		local c = origin + Vector3.new(math.cos(a) * r, -16, math.sin(a) * r)
-		terrain:FillCylinder(CFrame.new(c), 4, rng:NextNumber(25, 45), look.lake)
-	end
+	-- the play field: tiles (the ground units are placed on) with a little colour variation
 	local ground = Instance.new("Model")
 	ground.Name = "Ground"
 	ground.Parent = arena
-	local placeable = part(ground, Vector3.new(half * 2, 1, half * 2), CFrame.new(origin + Vector3.new(0, -0.5, 0)), theme.ground, { query = true })
-	placeable.Transparency = 1
-	placeable:SetAttribute("Placeable", true)
-	-- a low stone border around the field
+	local tile = half * 2 / 5
+	for i = 0, 4 do
+		for j = 0, 4 do
+			local x = -half + tile * (i + 0.5)
+			local z = -half + tile * (j + 0.5)
+			local c
+			if def.id == "starcastle" then
+				c = (i + j) % 2 == 0 and theme.ground or theme.grass2
+			else
+				c = theme.ground:Lerp(theme.grass2, ((i + j) % 2) * 0.5 + rng:NextNumber(0, 0.25))
+			end
+			part(ground, Vector3.new(tile, 4, tile), CFrame.new(origin + Vector3.new(x, -2, z)), c, { material = theme.groundMaterial, collide = true, query = true, shadow = false })
+		end
+	end
+	-- the field's edge and the cliff under it
 	for _, side in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
 		local along = side[1] == 0
 		local size = along and Vector3.new(half * 2 + 6, 1.2, 3) or Vector3.new(3, 1.2, half * 2 + 6)
 		part(arena, size, CFrame.new(origin + Vector3.new(side[1] * (half + 1.5), 0.6, side[2] * (half + 1.5))), theme.curb, { material = Enum.Material.Cobblestone, collide = true })
 	end
+	part(arena, Vector3.new(half * 2 + 6, 14, half * 2 + 6), CFrame.new(origin + Vector3.new(0, -11, 0)), shade(theme.ground, -0.45), { material = Enum.Material.Rock, collide = true })
 
 	local world = Instance.new("Folder")
 	world.Name = "Scenery"
 	world.Parent = arena
+	part(world, Vector3.new(1100, 4, 1100), CFrame.new(origin + Vector3.new(0, -16, 0)), shade(theme.grass2, -0.15), { material = theme.groundMaterial, shadow = false, collide = true })
 	local makeScenery = scenery[def.id]
 	for i = 1, 26 do
 		local a = i / 26 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
@@ -4646,14 +4799,27 @@ return AdminPanel
         <Item class="ModuleScript" referent="24">
           <Properties>
             <string name="Name">Animator</string>
-            <string name="Source"><![CDATA[-- Brings the SM64 models to life on this client: units and statues breathe and sway, enemies hop and waddle along
--- the path (bosses stomp slower and heavier), and a unit lunges at its target each time it attacks. It moves the
--- skin's Weld (see Skins), so the server's models and hitboxes are untouched.
+            <string name="Source"><![CDATA[-- Brings the SM64 models to life on this client by moving each skin's Weld (see Skins); the server's models and
+-- hitboxes are untouched.
+--   units: drop in with a bounce when placed, breathe and look around, wind up and lunge at each attack, and jump
+--          with a full spin when upgraded
+--   enemies: hop and waddle along the path; bosses stomp slower and heavier; all shrink away in a spin when killed
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local Animator = {}
 
-type Entry = { weld: Weld, base: CFrame, height: number, phase: number, kind: string, lunge: number }
+type Entry = {
+	weld: Weld,
+	skin: Instance,
+	base: CFrame,
+	height: number,
+	phase: number,
+	kind: string,
+	lunge: number,
+	drop: number,
+	spin: number,
+}
 
 local tracked: { [Model]: Entry } = {}
 
@@ -4666,26 +4832,68 @@ local function kindOf(model: Model): string
 	return "unit"
 end
 
+-- a quick copy of a killed enemy's mesh that spins, shrinks and fades where it died
+local function poof(e: Entry)
+	local skin = e.skin
+	if not skin:IsA("MeshPart") then
+		return
+	end
+	local ghost = skin:Clone()
+	for _, d in ghost:GetChildren() do
+		d:Destroy()
+	end
+	ghost.Anchored = true
+	ghost.Parent = workspace
+	local size = ghost.Size
+	local cf = ghost.CFrame
+	TweenService:Create(ghost, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+		Size = size * 0.05,
+		CFrame = cf * CFrame.new(0, size.Y * 0.4, 0) * CFrame.Angles(0, math.pi * 1.5, 0),
+		Transparency = 0.6,
+	}):Play()
+	task.delay(0.4, function()
+		ghost:Destroy()
+	end)
+end
+
 local function track(model: Model)
 	if tracked[model] then
 		return
 	end
 	local skin = model:FindFirstChild("SM64")
 	local weld = skin and skin:FindFirstChild("SkinWeld", true)
-	if not weld or not weld:IsA("Weld") then
+	if not skin or not weld or not weld:IsA("Weld") then
 		return
 	end
-	tracked[model] = {
+	local kind = kindOf(model)
+	local entry: Entry = {
 		weld = weld,
+		skin = skin,
 		base = weld.C0,
 		height = weld.C0.Y * 2,
 		phase = math.random() * 10,
-		kind = kindOf(model),
+		kind = kind,
 		lunge = 0,
+		-- units placed in battle drop in; statues and enemies appear as they are
+		drop = (kind == "unit" and model:GetAttribute("TowerId") ~= nil) and 1 or 0,
+		spin = 0,
 	}
+	tracked[model] = entry
+	if kind == "unit" then
+		model:GetAttributeChangedSignal("Level"):Connect(function()
+			entry.spin = 1
+		end)
+	else
+		model.AncestryChanged:Connect(function(_, parent)
+			if not parent and tracked[model] then
+				tracked[model] = nil
+				pcall(poof, entry)
+			end
+		end)
+	end
 end
 
--- a quick lunge toward the target for the unit with this tower id
+-- the unit with this tower id attacks
 function Animator.attack(towerId: number)
 	for model, e in tracked do
 		if e.kind == "unit" and model:GetAttribute("TowerId") == towerId then
@@ -4693,6 +4901,15 @@ function Animator.attack(towerId: number)
 			return
 		end
 	end
+end
+
+local function bounceOut(t: number): number
+	-- 0 -> 1 with a bounce at the end
+	if t < 0.6 then
+		return (t / 0.6) ^ 2
+	end
+	local k = (t - 0.8) / 0.2
+	return 1 - 0.12 * (1 - k * k)
 end
 
 function Animator.start()
@@ -4730,14 +4947,31 @@ function Animator.start()
 				cf = CFrame.new(0, hop, 0) * CFrame.Angles(0, 0, math.sin(p * 9) * 0.14)
 			elseif e.kind == "boss" then
 				local stomp = math.abs(math.sin(p * 4)) * 0.05 * h
-				cf = CFrame.new(0, stomp, 0) * CFrame.Angles(0, 0, math.sin(p * 4) * 0.07)
+				cf = CFrame.new(0, stomp, 0) * CFrame.Angles(math.sin(p * 4) * 0.04, 0, math.sin(p * 4) * 0.07)
 			else
 				local breathe = math.sin(p * 2.2) * 0.03 * h
-				cf = CFrame.new(0, breathe, 0) * CFrame.Angles(0, math.sin(p * 1.1) * 0.08, 0)
+				-- now and then the unit glances to the side
+				local glance = math.clamp(math.sin(p * 0.45) * 3, -1, 1) * 0.25
+				cf = CFrame.new(0, breathe, 0) * CFrame.Angles(0, glance + math.sin(p * 1.1) * 0.05, 0)
+				if e.drop > 0 then
+					e.drop = math.max(0, e.drop - dt * 2.5)
+					local k = bounceOut(1 - e.drop)
+					cf = CFrame.new(0, (1 - k) * h * 1.6, 0) * CFrame.Angles(0, (1 - k) * math.pi, 0) * cf
+				end
+				if e.spin > 0 then
+					e.spin = math.max(0, e.spin - dt * 1.8)
+					local k = 1 - e.spin
+					cf = CFrame.new(0, math.sin(k * math.pi) * h * 0.6, 0) * CFrame.Angles(0, k * math.pi * 2, 0) * cf
+				end
 				if e.lunge > 0 then
-					e.lunge = math.max(0, e.lunge - dt * 5)
-					local k = math.sin(e.lunge * math.pi)
-					cf = cf * CFrame.new(0, k * 0.12 * h, -k * 0.35 * h) * CFrame.Angles(-k * 0.35, 0, 0)
+					e.lunge = math.max(0, e.lunge - dt * 4.5)
+					local k = 1 - e.lunge
+					-- wind up (lean back) for the first third, then strike forward and recover
+					local back = k < 0.3 and math.sin(k / 0.3 * math.pi / 2) or math.max(0, 1 - (k - 0.3) / 0.15)
+					local strike = k < 0.3 and 0 or math.sin((k - 0.3) / 0.7 * math.pi)
+					cf = cf
+						* CFrame.new(0, strike * 0.15 * h, -strike * 0.45 * h + back * 0.1 * h)
+						* CFrame.Angles(-strike * 0.45 + back * 0.25, 0, 0)
 				end
 			end
 			e.weld.C0 = e.base * cf
@@ -5798,17 +6032,23 @@ function Fx.start()
 	folder = Instance.new("Folder")
 	folder.Name = "ClientFx"
 	folder.Parent = workspace
-	Net.ev("Fx").OnClientEvent:Connect(function(p)
-		local handler = handlers[p.style]
-		if handler then
-			handler(p)
-		end
-		chainArcs(p)
-		if p.tower then
-			Animator.attack(p.tower)
-		end
-		if p.dmg and p.to then
-			damageNumber(p.to, p.dmg, p.color or Color3.new(1, 1, 1))
+	-- the server sends each frame's effects as one list
+	Net.ev("Fx").OnClientEvent:Connect(function(list)
+		local numbers = 0
+		for _, p in list do
+			local handler = handlers[p.style]
+			if handler then
+				handler(p)
+			end
+			chainArcs(p)
+			if p.tower then
+				Animator.attack(p.tower)
+			end
+			-- at most a few damage numbers per frame, so big fights stay smooth
+			if p.dmg and p.to and numbers < 6 then
+				numbers += 1
+				damageNumber(p.to, p.dmg, p.color or Color3.new(1, 1, 1))
+			end
 		end
 	end)
 end
@@ -5842,7 +6082,7 @@ return {
           <Properties>
             <string name="Name">LobbyUI</string>
             <string name="Source"><![CDATA[-- Lobby screens: menu tiles, currencies, the team tray and the Play / Summon / Units / Traits / Challenges windows,
--- plus the summon cinematic at the Summon Hall pedestal.
+-- the summon animation is in SummonFx.
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -5856,11 +6096,10 @@ local Enemies = require(Shared.Enemies)
 local Challenges = require(Shared.Challenges)
 local Stats = require(Shared.Stats)
 local Progression = require(Shared.Progression)
-local ModelFactory = require(Shared.ModelFactory)
 
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
-local Skins = require(script.Parent.Skins)
+local SummonFx = require(script.Parent.SummonFx)
 
 local LobbyUI = {}
 
@@ -5976,6 +6215,29 @@ local function tile(parent: Instance, emoji: string, label: string, color: Color
 	Ui.title({ Text = label, Size = UDim2.new(1, -6, 0, 22), Position = UDim2.new(0, 3, 1, -26), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 19, Parent = t })
 	local badge = Ui.new("Frame", { Size = UDim2.fromOffset(24, 24), Position = UDim2.fromOffset(-6, -6), BackgroundColor3 = Color3.fromRGB(30, 24, 50), ZIndex = 3, Parent = t }, { Ui.corner(6), Ui.stroke(C.ink, 2) })
 	Ui.text({ Text = key, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 15, ZIndex = 4, Parent = badge })
+	-- a shine sweeps across the tile every few seconds
+	local clip = Ui.new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ClipsDescendants = true, ZIndex = 2, Parent = t }, { Ui.corner(14) })
+	local shine = Ui.new("Frame", {
+		Size = UDim2.new(0.5, 0, 1.6, 0),
+		Position = UDim2.fromScale(-0.8, -0.3),
+		Rotation = 20,
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		ZIndex = 2,
+		Parent = clip,
+	}, {
+		Ui.new("UIGradient", {
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.55), NumberSequenceKeypoint.new(1, 1) }),
+		}),
+	})
+	task.spawn(function()
+		task.wait(order * 0.35)
+		while shine.Parent do
+			shine.Position = UDim2.fromScale(-0.8, -0.3)
+			TweenService:Create(shine, TweenInfo.new(0.7, Enum.EasingStyle.Quad), { Position = UDim2.fromScale(1.3, -0.3) }):Play()
+			task.wait(4)
+		end
+	end)
 	local scale = Ui.new("UIScale", { Parent = t })
 	t.MouseEnter:Connect(function()
 		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Back), { Scale = 1.07 }):Play()
@@ -6253,155 +6515,16 @@ end
 
 -- ============================================================ Summon
 
-local resultOverlay: Frame
-
-local function hallPedestal(): BasePart?
-	local lobby = workspace:FindFirstChild("Lobby")
-	local hall = lobby and lobby:FindFirstChild("SummonHall")
-	return hall and hall:FindFirstChild("Pedestal") :: BasePart?
-end
-
--- the best pulled unit appears on the Summon Hall pedestal in a beam of its rarity colour
-local function cinematic(unitId: string, rarity: string): () -> ()
-	local pedestal = hallPedestal()
-	local camera = workspace.CurrentCamera
-	if not pedestal then
-		return function() end
-	end
-	local oldType = camera.CameraType
-	local oldCf = camera.CFrame
-	camera.CameraType = Enum.CameraType.Scriptable
-	-- the pedestal is an upright cylinder: its height is Size.X
-	local top = pedestal.Position + Vector3.new(0, pedestal.Size.X / 2 + 0.6, 0)
-	local look = CFrame.lookAt(top + Vector3.new(0, 7, -20), top + Vector3.new(0, 3.5, 0))
-	TweenService:Create(camera, TweenInfo.new(0.7, Enum.EasingStyle.Quad), { CFrame = look }):Play()
-	local color = rarityColor(rarity)
-	local folder = Instance.new("Folder")
-	folder.Name = "SummonFx"
-	folder.Parent = workspace
-	local beam = Instance.new("Part")
-	beam.Anchored = true
-	beam.CanCollide = false
-	beam.CanQuery = false
-	beam.Material = Enum.Material.Neon
-	beam.Color = color
-	beam.Shape = Enum.PartType.Cylinder
-	beam.Size = Vector3.new(60, 0.5, 0.5)
-	beam.CFrame = CFrame.new(top + Vector3.new(0, 30, 0)) * CFrame.Angles(0, 0, math.rad(90))
-	beam.Transparency = 0.2
-	beam.Parent = folder
-	TweenService:Create(beam, TweenInfo.new(0.6, Enum.EasingStyle.Back), { Size = Vector3.new(60, 9, 9) }):Play()
-	local glow = Instance.new("PointLight")
-	glow.Color = color
-	glow.Range = 30
-	glow.Brightness = 4
-	glow.Parent = beam
-	local sparks = Instance.new("ParticleEmitter")
-	sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-	sparks.Color = ColorSequence.new(color)
-	sparks.LightEmission = 1
-	sparks.Rate = 60
-	sparks.Speed = NumberRange.new(6, 14)
-	sparks.SpreadAngle = Vector2.new(180, 180)
-	sparks.Lifetime = NumberRange.new(0.6, 1.2)
-	sparks.Size = NumberSequence.new(1, 0)
-	sparks.Parent = beam
-	task.delay(0.9, function()
-		if not folder.Parent then
-			return
-		end
-		TweenService:Create(beam, TweenInfo.new(0.4), { Size = Vector3.new(60, 0.2, 0.2), Transparency = 1 }):Play()
-		local model = ModelFactory.build(unitId, 1.4, true)
-		model:PivotTo(CFrame.new(top) * CFrame.Angles(0, math.pi, 0))
-		model.Parent = folder
-		Skins.apply(model, true)
-		sparks.Rate = 15
-	end)
-	return function()
-		folder:Destroy()
-		camera.CameraType = oldType
-		camera.CFrame = oldCf
-	end
-end
-
 local function showSummonResults(results)
-	local best = results[1]
-	for _, r in results do
-		if Rarities.Info[r.rarity].rank > Rarities.Info[best.rarity].rank then
-			best = r
-		end
-	end
-	local finish = cinematic(best.unitId, best.rarity)
 	open(nil)
-	task.wait(hallPedestal() and 2.2 or 0)
-
-	Ui.clear(resultOverlay)
-	resultOverlay.Visible = true
-	local bestRank = Rarities.Info[best.rarity].rank
-	local banner = ({ "NICE PULL!", "RARE PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
-	local title = Ui.title({
-		Text = banner,
-		Size = UDim2.fromOffset(700, 70),
-		Position = UDim2.new(0.5, 0, 0.5, -250),
-		AnchorPoint = Vector2.new(0.5, 0),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextColor3 = rarityColor(best.rarity),
-		MaxText = 64,
-		Outline = 3,
-		Parent = resultOverlay,
-	})
-	Ui.pop(title)
-	local grid = Ui.new("Frame", {
-		Size = UDim2.fromOffset(5 * 146, (#results > 5 and 2 or 1) * 190),
-		Position = UDim2.fromScale(0.5, 0.5),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundTransparency = 1,
-		Parent = resultOverlay,
-	})
-	Ui.new("UIGridLayout", {
-		CellSize = UDim2.fromOffset(134, 178),
-		CellPadding = UDim2.fromOffset(12, 12),
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = grid,
-	})
-	for i, r in results do
-		local holder = Ui.new("Frame", { LayoutOrder = i, BackgroundTransparency = 1, Parent = grid })
-		local card = Ui.unitCard(holder, { unitId = r.unitId, level = 1 }, UDim2.new(1, 0, 1, -30))
-		card.Visible = false
-		Ui.chip(r.rarity, rarityColor(r.rarity), { Size = UDim2.fromOffset(100, 22), Position = UDim2.new(0.5, -50, 0, -11), ZIndex = 6, Parent = card })
-		local g = r.grades or Progression.DefaultGrades
-		local gradeRow = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 1, -24), BackgroundTransparency = 1, Visible = false, Parent = holder }, { Ui.list(Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Center) })
-		for _, k in { "d", "s", "r" } do
-			Ui.gradeBadge(g[k], { Size = UDim2.fromOffset(40, 22), MaxText = 18, Parent = gradeRow })
-		end
-		task.delay(0.1 * i, function()
-			card.Visible = true
-			gradeRow.Visible = true
-			Ui.pop(card)
-		end)
-	end
-	local ok
-	ok = Ui.button("AWESOME!", C.green, function()
-		resultOverlay.Visible = false
-		finish()
+	SummonFx.play(results, function()
 		open("Summon")
-	end, { Size = UDim2.fromOffset(240, 58), Position = UDim2.new(0.5, 0, 0.5, 220), AnchorPoint = Vector2.new(0.5, 0), MaxText = 30, Parent = resultOverlay })
-	ok.Font = Ui.TitleFont
+	end)
 end
 
 local function buildSummon()
 	local window, content = Ui.window(gui, "Summon", "✨", UDim2.fromOffset(980, 560), closeButton)
 	windows.Summon = window
-	resultOverlay = Ui.new("Frame", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(10, 6, 24),
-		BackgroundTransparency = 0.3,
-		Visible = false,
-		ZIndex = 10,
-		Parent = gui,
-	})
 
 	refreshers.Summon = function()
 		local data = Store.data
@@ -6998,7 +7121,6 @@ function LobbyUI.setVisible(visible: boolean)
 	gui.Enabled = visible
 	if not visible then
 		open(nil)
-		resultOverlay.Visible = false
 	end
 end
 
@@ -7061,12 +7183,14 @@ local Ui = require(script.Parent.Ui)
 local Skins = require(script.Parent.Skins)
 local Animator = require(script.Parent.Animator)
 local AdminPanel = require(script.Parent.AdminPanel)
+local Travel = require(script.Parent.Travel)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 end)
 
 Store.start()
+Travel.start()
 Fx.start()
 Skins.start()
 Animator.start()
@@ -7080,8 +7204,11 @@ local lobbyGui = LobbyUI.start()
 local battleGui = BattleUI.start()
 AdminPanel.start()
 
+-- a battle server has no lobby: its menus stay hidden
+local battleServer = workspace:GetAttribute("BattleServer") == true
+LobbyUI.setVisible(not battleServer)
 Store.BattleChanged:Connect(function(state)
-	LobbyUI.setVisible(not state.active)
+	LobbyUI.setVisible(not state.active and not battleServer)
 end)
 
 -- scale the UI down on small screens
@@ -7596,6 +7723,515 @@ return Store
         </Item>
         <Item class="ModuleScript" referent="32">
           <Properties>
+            <string name="Name">SummonFx</string>
+            <string name="Source"><![CDATA[-- The summon animation: a Power Star spins up in a burst of rays whose colour climbs toward the best rarity
+-- pulled (blue for Rare, gold for Legendary, rainbow for Mythic), flashes, and the units are revealed: one big
+-- spinning model for a single summon, or cards flipping over one by one for a 10x. Click to skip ahead.
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+local Shared = game.ReplicatedStorage.Shared
+local Rarities = require(Shared.Rarities)
+local Progression = require(Shared.Progression)
+
+local Ui = require(script.Parent.Ui)
+
+local SummonFx = {}
+
+local C = Ui.Colors
+local WHITE = Color3.new(1, 1, 1)
+
+local function tween(inst: Instance, t: number, goal: { [string]: any }, style: Enum.EasingStyle?, dir: Enum.EasingDirection?)
+	local tw = TweenService:Create(inst, TweenInfo.new(t, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), goal)
+	tw:Play()
+	return tw
+end
+
+local function sound(id: string, volume: number, pitch: number?)
+	local s = Instance.new("Sound")
+	s.SoundId = id
+	s.Volume = volume
+	s.PlaybackSpeed = pitch or 1
+	s.Parent = workspace.CurrentCamera
+	s:Play()
+	s.Ended:Once(function()
+		s:Destroy()
+	end)
+	task.delay(4, function()
+		s:Destroy()
+	end)
+end
+
+local RAINBOW = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 80)),
+	ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 200, 60)),
+	ColorSequenceKeypoint.new(0.4, Color3.fromRGB(90, 230, 90)),
+	ColorSequenceKeypoint.new(0.6, Color3.fromRGB(70, 180, 255)),
+	ColorSequenceKeypoint.new(0.8, Color3.fromRGB(180, 90, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 80, 170)),
+})
+
+-- a ring of rays around the centre of `parent`; returns the holder (rotate it) and the rays
+local function rays(parent: Instance, count: number, length: number, color: Color3, z: number): (Frame, { Frame })
+	local holder = Ui.new("Frame", {
+		Size = UDim2.fromOffset(0, 0),
+		Position = UDim2.fromScale(0.5, 0.5),
+		BackgroundTransparency = 1,
+		ZIndex = z,
+		Parent = parent,
+	})
+	local list = {}
+	for i = 1, count do
+		local ray = Ui.new("Frame", {
+			Size = UDim2.fromOffset(i % 2 == 0 and 26 or 46, length),
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.fromOffset(0, 0),
+			Rotation = i / count * 360,
+			BackgroundColor3 = color,
+			BackgroundTransparency = 0.55,
+			BorderSizePixel = 0,
+			ZIndex = z,
+			Parent = holder,
+		}, {
+			Ui.new("UIGradient", {
+				Rotation = 90,
+				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.6, 0.3), NumberSequenceKeypoint.new(1, 0) }),
+			}),
+		})
+		table.insert(list, ray)
+	end
+	return holder, list
+end
+
+local function burst(parent: Instance, color: Color3, count: number, z: number)
+	for _ = 1, count do
+		local size = math.random(8, 18)
+		local p = Ui.new("Frame", {
+			Size = UDim2.fromOffset(size, size),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Rotation = 45,
+			BackgroundColor3 = math.random() < 0.3 and WHITE or color,
+			BorderSizePixel = 0,
+			ZIndex = z,
+			Parent = parent,
+		}, { Ui.corner(3) })
+		local a = math.random() * math.pi * 2
+		local d = math.random(220, 520)
+		local t = math.random(50, 110) / 100
+		tween(p, t, {
+			Position = UDim2.new(0.5, math.cos(a) * d, 0.5, math.sin(a) * d),
+			BackgroundTransparency = 1,
+			Rotation = 45 + math.random(-180, 180),
+		})
+		task.delay(t, function()
+			p:Destroy()
+		end)
+	end
+end
+
+local function rarityColor(r: string): Color3
+	return Rarities.Info[r].color
+end
+
+-- plays the animation for summon results ({ unitId, rarity, grades }); calls done when the player closes it
+function SummonFx.play(results: { any }, done: () -> ())
+	local best = results[1]
+	for _, r in results do
+		if Rarities.Info[r.rarity].rank > Rarities.Info[best.rarity].rank then
+			best = r
+		end
+	end
+	local bestRank = Rarities.Info[best.rarity].rank
+
+	local gui = Ui.new("ScreenGui", {
+		Name = "SummonFx",
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		DisplayOrder = 30,
+		Parent = Players.LocalPlayer:WaitForChild("PlayerGui"),
+	})
+	local root = Ui.new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(8, 4, 20), BackgroundTransparency = 1, Parent = gui })
+	Ui.new("UIGradient", {
+		Color = ColorSequence.new(Color3.fromRGB(40, 20, 90), Color3.fromRGB(6, 3, 16)),
+		Rotation = 90,
+		Parent = root,
+	})
+	local scale = Ui.new("UIScale", { Parent = root })
+	local cam = workspace.CurrentCamera
+	scale.Scale = math.clamp(math.min(cam.ViewportSize.X / 1280, cam.ViewportSize.Y / 760), 0.5, 1.25)
+	tween(root, 0.3, { BackgroundTransparency = 0 })
+
+	local connections: { RBXScriptConnection } = {}
+	local holder, rayList = rays(root, 18, 900, WHITE, 2)
+	local spinSpeed = 30
+	local shake = 0
+	table.insert(
+		connections,
+		RunService.RenderStepped:Connect(function(dt)
+			holder.Rotation += spinSpeed * dt
+			if shake > 0 then
+				root.Position = UDim2.fromOffset(math.random(-shake, shake), math.random(-shake, shake))
+			else
+				root.Position = UDim2.new()
+			end
+		end)
+	)
+	local function colorRays(color: Color3?, rainbow: boolean?)
+		for _, r in rayList do
+			if rainbow then
+				r.BackgroundColor3 = WHITE
+				local g = r:FindFirstChild("Rainbow") or Ui.new("UIGradient", { Name = "Rainbow", Color = RAINBOW, Parent = r })
+				g.Rotation = 0
+			elseif color then
+				tween(r, 0.25, { BackgroundColor3 = color })
+			end
+		end
+	end
+
+	-- the star
+	local glow = Ui.new("Frame", {
+		Size = UDim2.fromOffset(220, 220),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0.6,
+		ZIndex = 3,
+		Parent = root,
+	}, { Ui.round() })
+	local star = Ui.icon("star", "⭐", { Size = UDim2.fromOffset(190, 190), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), MaxText = 150, ZIndex = 4, Parent = root })
+	local starScale = Ui.new("UIScale", { Scale = 0.1, Parent = star })
+	tween(starScale, 0.5, { Scale = 1 }, Enum.EasingStyle.Back)
+	local caption = Ui.title({
+		Text = "SUMMONING...",
+		Size = UDim2.fromOffset(600, 50),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.5, 150),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		MaxText = 40,
+		Outline = 3,
+		ZIndex = 5,
+		Parent = root,
+	})
+	Ui.text({
+		Text = "click to skip",
+		Size = UDim2.fromOffset(300, 24),
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -20),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextColor3 = C.muted,
+		MaxText = 18,
+		ZIndex = 5,
+		Parent = root,
+	})
+
+	local skipped = false
+	local skipButton = Ui.new("TextButton", { Text = "", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 20, Parent = root })
+	skipButton.Activated:Connect(function()
+		skipped = true
+	end)
+	local function wait(t: number)
+		local start = os.clock()
+		while os.clock() - start < t and not skipped do
+			task.wait()
+		end
+	end
+
+	-- the build-up: each stage the pull reaches turns the rays and glow a rarer colour
+	sound("rbxasset://sounds/swoosh.wav", 0.6)
+	local stages = {
+		{ rank = 1, color = Color3.fromRGB(230, 230, 255), text = "SUMMONING..." },
+		{ rank = 2, color = rarityColor("Rare"), text = "RARE...?" },
+		{ rank = 3, color = rarityColor("Legendary"), text = "LEGENDARY!?" },
+		{ rank = 4, color = rarityColor("Mythic"), text = "M Y T H I C ! ! !" },
+	}
+	for i, st in stages do
+		if st.rank > bestRank or skipped then
+			break
+		end
+		colorRays(st.color, st.rank == 4)
+		tween(glow, 0.25, { BackgroundColor3 = st.color, Size = UDim2.fromOffset(220 + i * 50, 220 + i * 50) })
+		caption.Text = st.text
+		caption.TextColor3 = st.color
+		Ui.pop(caption)
+		burst(root, st.color, 10 + i * 8, 4)
+		sound("rbxasset://sounds/electronicpingshort.wav", 0.5, 0.8 + i * 0.15)
+		spinSpeed = 30 + i * 50
+		shake = (i - 1) * 3
+		tween(star, 0.6, { Rotation = star.Rotation + 360 }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+		tween(starScale, 0.3, { Scale = 1 + i * 0.12 }, Enum.EasingStyle.Back)
+		wait(i == 1 and 0.9 or 0.75)
+	end
+	skipped = false
+	skipButton:Destroy()
+
+	-- flash
+	shake = 0
+	local flash = Ui.new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, ZIndex = 15, Parent = root })
+	tween(flash, 0.6, { BackgroundTransparency = 1 })
+	task.delay(0.6, function()
+		flash:Destroy()
+	end)
+	burst(root, rarityColor(best.rarity), 40, 6)
+	sound("rbxasset://sounds/electronicpingshort.wav", 0.8, 1.6)
+	star:Destroy()
+	glow:Destroy()
+	caption:Destroy()
+	spinSpeed = 18
+	colorRays(rarityColor(best.rarity), bestRank == 4)
+
+	-- reveal
+	local banner = ({ "NICE PULL!", "RARE PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
+	local title = Ui.title({
+		Text = banner,
+		Size = UDim2.fromOffset(700, 70),
+		Position = UDim2.new(0.5, 0, 0.5, -280),
+		AnchorPoint = Vector2.new(0.5, 0),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextColor3 = rarityColor(best.rarity),
+		MaxText = 64,
+		Outline = 4,
+		ZIndex = 8,
+		Parent = root,
+	})
+	if bestRank == 4 then
+		title.TextColor3 = WHITE
+		Ui.spin(Ui.new("UIGradient", { Color = RAINBOW, Parent = title }), 120)
+	end
+	Ui.pop(title)
+
+	local function gradeRow(parent: Instance, grades: any, props: { [string]: any })
+		local row = Ui.new("Frame", props, { Ui.list(Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Center) })
+		row.BackgroundTransparency = 1
+		row.Parent = parent
+		local g = grades or Progression.DefaultGrades
+		for _, k in { "d", "s", "r" } do
+			Ui.gradeBadge(g[k], { Size = UDim2.fromOffset(40, 22), MaxText = 18, ZIndex = 9, Parent = row })
+		end
+		return row
+	end
+
+	if #results == 1 then
+		local r = results[1]
+		local vp = Ui.viewport(r.unitId, {
+			Size = UDim2.fromOffset(380, 380),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, 0, 0.5, -20),
+			ZIndex = 8,
+			Parent = root,
+		}, true)
+		Ui.pop(vp)
+		local name = Ui.title({
+			Text = Ui.unitName(r.unitId),
+			Size = UDim2.fromOffset(600, 50),
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0.5, 160),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			MaxText = 44,
+			Outline = 3,
+			ZIndex = 9,
+			Parent = root,
+		})
+		Ui.pop(name, 0.1)
+		Ui.chip(r.rarity, rarityColor(r.rarity), { Size = UDim2.fromOffset(150, 28), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 212), ZIndex = 9, Parent = root })
+		gradeRow(root, r.grades, { Size = UDim2.fromOffset(200, 24), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 248) })
+	else
+		local grid = Ui.new("Frame", {
+			Size = UDim2.fromOffset(5 * 150, 2 * 214),
+			Position = UDim2.new(0.5, 0, 0.5, 10),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundTransparency = 1,
+			ZIndex = 8,
+			Parent = root,
+		}, {
+			Ui.new("UIGridLayout", {
+				CellSize = UDim2.fromOffset(138, 202),
+				CellPadding = UDim2.fromOffset(12, 12),
+				HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}),
+		})
+		local cards = {}
+		for i, r in results do
+			local slot = Ui.new("Frame", { LayoutOrder = i, BackgroundTransparency = 1, ZIndex = 8, Parent = grid })
+			-- face down: a purple card with a star
+			local back = Ui.new("Frame", {
+				Size = UDim2.new(1, 0, 1, -28),
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.fromScale(0.5, 0),
+				BackgroundColor3 = WHITE,
+				ZIndex = 8,
+				Parent = slot,
+			}, { Ui.corner(12), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(150, 90, 255), Color3.fromRGB(60, 30, 140)) })
+			Ui.icon("star", "⭐", { Size = UDim2.fromOffset(70, 70), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), MaxText = 50, ZIndex = 9, Parent = back })
+			Ui.pop(slot, i * 0.03)
+			cards[i] = { slot = slot, back = back, r = r }
+		end
+		task.wait(0.4)
+		for _, c in cards do
+			local rank = Rarities.Info[c.r.rarity].rank
+			-- flip: squash the back flat, then grow the unit card out of it
+			local t = tween(c.back, 0.12, { Size = UDim2.new(0, 0, 1, -28) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			t.Completed:Wait()
+			c.back:Destroy()
+			local card = Ui.unitCard(c.slot, { unitId = c.r.unitId, level = 1 }, UDim2.new(1, 0, 1, -28))
+			card.AnchorPoint = Vector2.new(0.5, 0)
+			card.Position = UDim2.fromScale(0.5, 0)
+			card.Size = UDim2.new(0, 0, 1, -28)
+			tween(card, 0.16, { Size = UDim2.new(1, 0, 1, -28) }, Enum.EasingStyle.Back)
+			Ui.chip(c.r.rarity, rarityColor(c.r.rarity), { Size = UDim2.fromOffset(100, 22), Position = UDim2.new(0.5, -50, 0, -11), ZIndex = 12, Parent = card })
+			gradeRow(c.slot, c.r.grades, { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 1, -24) })
+			if rank >= 3 then
+				-- legendary and mythic cards glow and burst
+				local stroke = card:FindFirstChildWhichIsA("UIStroke") :: UIStroke
+				stroke.Color = rarityColor(c.r.rarity)
+				stroke.Thickness = 4
+				task.spawn(function()
+					while stroke.Parent do
+						tween(stroke, 0.5, { Thickness = 7 }).Completed:Wait()
+						tween(stroke, 0.5, { Thickness = 3 }).Completed:Wait()
+					end
+				end)
+				sound("rbxasset://sounds/electronicpingshort.wav", 0.7, 1.2 + rank * 0.1)
+				local pos = c.slot.AbsolutePosition + c.slot.AbsoluteSize / 2 - root.AbsoluteSize / 2
+				for _ = 1, 14 do
+					local p = Ui.new("Frame", {
+						Size = UDim2.fromOffset(10, 10),
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Position = UDim2.new(0.5, pos.X / scale.Scale, 0.5, pos.Y / scale.Scale),
+						Rotation = 45,
+						BackgroundColor3 = rarityColor(c.r.rarity),
+						BorderSizePixel = 0,
+						ZIndex = 13,
+						Parent = root,
+					})
+					local a = math.random() * math.pi * 2
+					tween(p, 0.6, { Position = p.Position + UDim2.fromOffset(math.cos(a) * 120, math.sin(a) * 120), BackgroundTransparency = 1 })
+					task.delay(0.6, function()
+						p:Destroy()
+					end)
+				end
+				shake = 4
+				task.delay(0.15, function()
+					shake = 0
+				end)
+				task.wait(0.35)
+			else
+				sound("rbxasset://sounds/swoosh.wav", 0.3, 1.4)
+				task.wait(0.12)
+			end
+		end
+	end
+
+	local ok = Ui.button("AWESOME!", C.green, function()
+		for _, c in connections do
+			c:Disconnect()
+		end
+		tween(root, 0.2, { BackgroundTransparency = 1 })
+		gui:Destroy()
+		done()
+	end, { Size = UDim2.fromOffset(240, 58), Position = UDim2.new(0.5, 0, 1, -90), AnchorPoint = Vector2.new(0.5, 0), MaxText = 30, ZIndex = 14, Parent = root })
+	ok.Font = Ui.TitleFont
+	Ui.pop(ok)
+end
+
+return SummonFx
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="33">
+          <Properties>
+            <string name="Name">Travel</string>
+            <string name="Source"><![CDATA[-- The loading screen shown while the player is teleported between the lobby and a battle server (the server
+-- sets the player's "Travel" attribute), and while a battle server sets up the battle after arriving.
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+
+local Ui = require(script.Parent.Ui)
+local Store = require(script.Parent.Store)
+
+local Travel = {}
+
+local C = Ui.Colors
+
+local function build(text: string): ScreenGui
+	local gui = Ui.new("ScreenGui", { Name = "Travel", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 50 })
+	local bg = Ui.new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), Parent = gui }, {
+		Ui.gradient(Color3.fromRGB(70, 40, 150), Color3.fromRGB(14, 8, 34)),
+	})
+	local star = Ui.icon("star", "⭐", { Name = "Star", Size = UDim2.fromOffset(150, 150), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42), MaxText = 120, Parent = bg })
+	star:SetAttribute("Spin", true)
+	Ui.title({
+		Name = "Caption",
+		Text = text,
+		Size = UDim2.fromOffset(800, 60),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.42, 100),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		MaxText = 46,
+		Outline = 3,
+		Parent = bg,
+	})
+	Ui.text({
+		Text = "Star Kingdom Defense",
+		Size = UDim2.fromOffset(400, 28),
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -24),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextColor3 = C.muted,
+		MaxText = 22,
+		Parent = bg,
+	})
+	return gui
+end
+
+function Travel.start()
+	local player = Players.LocalPlayer
+	local current: ScreenGui? = nil
+	local function show(text: string?)
+		if current then
+			current:Destroy()
+			current = nil
+		end
+		if text then
+			local gui = build(text)
+			gui.Parent = player:WaitForChild("PlayerGui")
+			current = gui
+			-- shown during the teleport itself too
+			pcall(function()
+				TeleportService:SetTeleportGui(build(text))
+			end)
+		end
+	end
+	RunService.RenderStepped:Connect(function(dt)
+		local star = current and current:FindFirstChild("Star", true)
+		if star and star:IsA("GuiObject") then
+			star.Rotation += dt * 120
+		end
+	end)
+	player:GetAttributeChangedSignal("Travel"):Connect(function()
+		show(player:GetAttribute("Travel"))
+	end)
+	-- a battle server: cover the empty world until the battle has started
+	if workspace:GetAttribute("BattleServer") then
+		show("Loading battle...")
+		Store.BattleChanged:Connect(function(state)
+			if state.active and not player:GetAttribute("Travel") then
+				show(nil)
+			end
+		end)
+	end
+end
+
+return Travel
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="34">
+          <Properties>
             <string name="Name">Ui</string>
             <string name="Source"><![CDATA[-- UI toolkit and the game's look: chunky outlined text, gradient buttons, gold-bannered windows, rarity unit cards,
 -- stat chips with grade badges, spinning model viewports and toasts.
@@ -7878,11 +8514,26 @@ end
 
 -- ============================================================ animation
 
+-- whether a gui object is actually on screen (it and every ancestor visible, its ScreenGui enabled)
+local function onScreen(obj: Instance): boolean
+	local node: Instance? = obj
+	while node do
+		if node:IsA("GuiObject") then
+			if not node.Visible then
+				return false
+			end
+		elseif node:IsA("LayerCollector") then
+			return node.Enabled and node:IsDescendantOf(game)
+		end
+		node = node.Parent
+	end
+	return false
+end
 -- every registered gradient spins (mythic cards, banners)
 local spinning: { [UIGradient]: number } = setmetatable({}, { __mode = "k" }) :: any
 RunService.RenderStepped:Connect(function(dt)
 	for g, speed in spinning do
-		if g.Parent then
+		if g.Parent and onScreen(g.Parent) then
 			g.Rotation = (g.Rotation + dt * speed) % 360
 		end
 	end
@@ -7973,10 +8624,18 @@ end
 -- ============================================================ models
 
 local viewportSpin: { [ViewportFrame]: { camera: Camera, center: Vector3, dist: number, angle: number } } = setmetatable({}, { __mode = "k" }) :: any
+-- viewports re-render whenever their camera moves: turn only the visible ones, at 30 fps
+local spinClock = 0
 RunService.RenderStepped:Connect(function(dt)
+	spinClock += dt
+	if spinClock < 1 / 30 then
+		return
+	end
+	local step = spinClock
+	spinClock = 0
 	for vp, s in viewportSpin do
-		if vp.Parent and vp.Visible then
-			s.angle += dt * 0.8
+		if onScreen(vp) then
+			s.angle += step * 0.8
 			s.camera.CFrame = CFrame.lookAt(s.center + Vector3.new(math.sin(s.angle) * s.dist, s.dist * 0.25, -math.cos(s.angle) * s.dist), s.center)
 		end
 	end
@@ -8245,19 +8904,19 @@ return Ui
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="33">
+  <Item class="Workspace" referent="35">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="FilteringEnabled">true</bool>
       <bool name="NeedsPivotMigration">false</bool>
       <bool name="StreamingEnabled">false</bool>
     </Properties>
-    <Item class="Model" referent="34">
+    <Item class="Model" referent="36">
       <Properties>
         <string name="Name">Lobby</string>
         <bool name="NeedsPivotMigration">false</bool>
       </Properties>
-      <Item class="Part" referent="35">
+      <Item class="Part" referent="37">
         <Properties>
           <string name="Name">Floor</string>
           <bool name="Anchored">true</bool>
@@ -8277,7 +8936,7 @@ return Ui
           <token name="TopSurface">0</token>
         </Properties>
       </Item>
-      <Item class="SpawnLocation" referent="36">
+      <Item class="SpawnLocation" referent="38">
         <Properties>
           <string name="Name">Spawn</string>
           <bool name="Anchored">true</bool>

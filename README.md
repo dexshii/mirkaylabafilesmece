@@ -23,10 +23,18 @@ To keep your progress between sessions:
 
 Without this the game still runs, but every session starts fresh. The output window says so once.
 
+In the published game each battle runs in its own reserved server: starting a stage saves your data and teleports
+you there, and leaving teleports you back to a lobby server. In Studio, where teleports don't work, battles run in an
+arena next to the lobby instead.
+
+**Admin panel**: press F2 (or the red ADMIN button) to give gems, crystals, levels, units and traits, unlock maps and
+control the current battle. It's open to anyone in Studio, to the game's owner, and to the user ids in `ADMINS` at the
+top of the admin section in `src/server/Main.server.luau`.
+
 ## How to play
 
 - **Lobby**: use the menu tiles on the left, or walk up to the castle's battle gate (Play) or the Summon Hall
-  pedestal (Summon) and press E. Summoned units appear on the pedestal in a beam of their rarity's colour.
+  pedestal (Summon) and press E.
 - **Play**: pick a map and stage. Click a unit in the hotbar (or press 1–6), then click the ground to place it. Hold
   Shift to keep placing, and press Q or right-click to cancel. Click a placed unit to upgrade it with T (4 upgrades),
   change its targeting with R (First / Last / Strongest / Closest) or sell it for 60% with X.
@@ -123,11 +131,15 @@ src/shared/              ReplicatedStorage.Shared: game data and rules used by s
 src/server/              ServerScriptService.Server
   Main.server.luau       remotes: summons, traits, team, starting and ending battles, rewards
   Battle.luau            the battle simulation: waves, enemies, units, auras, abilities
-  MapBuilder.luau        builds a map's terrain, path, portal and castle
+  MapBuilder.luau        builds a map's ground, path, scenery, portal and castle
   DataService.luau       DataStore saving
   Lobby.luau             the lobby: castle and battle gate, Summon Hall, unit statues
 src/client/              StarterPlayerScripts.Client: lobby windows, battle HUD, placement, effects
-  Ui.luau                the UI kit: windows, buttons, unit cards, stat chips, viewports
+  Ui.luau                the UI kit: windows, buttons, icons, unit cards, stat chips, viewports
+  SummonFx.luau          the summon animation
+  Animator.luau          unit and enemy animations on the SM64 models
+  AdminPanel.luau        the admin panel
+  Travel.luau            the loading screen between servers
 tools/sm64_import/       makes real SM64 models from your own ROM (see its README)
 ```
 

@@ -1,5 +1,5 @@
 -- Lobby screens: menu tiles, currencies, the team tray and the Play / Summon / Units / Traits / Challenges windows,
--- plus the summon cinematic at the Summon Hall pedestal.
+-- the summon animation is in SummonFx.
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -13,11 +13,10 @@ local Enemies = require(Shared.Enemies)
 local Challenges = require(Shared.Challenges)
 local Stats = require(Shared.Stats)
 local Progression = require(Shared.Progression)
-local ModelFactory = require(Shared.ModelFactory)
 
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
-local Skins = require(script.Parent.Skins)
+local SummonFx = require(script.Parent.SummonFx)
 
 local LobbyUI = {}
 
@@ -133,6 +132,29 @@ local function tile(parent: Instance, emoji: string, label: string, color: Color
 	Ui.title({ Text = label, Size = UDim2.new(1, -6, 0, 22), Position = UDim2.new(0, 3, 1, -26), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 19, Parent = t })
 	local badge = Ui.new("Frame", { Size = UDim2.fromOffset(24, 24), Position = UDim2.fromOffset(-6, -6), BackgroundColor3 = Color3.fromRGB(30, 24, 50), ZIndex = 3, Parent = t }, { Ui.corner(6), Ui.stroke(C.ink, 2) })
 	Ui.text({ Text = key, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 15, ZIndex = 4, Parent = badge })
+	-- a shine sweeps across the tile every few seconds
+	local clip = Ui.new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ClipsDescendants = true, ZIndex = 2, Parent = t }, { Ui.corner(14) })
+	local shine = Ui.new("Frame", {
+		Size = UDim2.new(0.5, 0, 1.6, 0),
+		Position = UDim2.fromScale(-0.8, -0.3),
+		Rotation = 20,
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		ZIndex = 2,
+		Parent = clip,
+	}, {
+		Ui.new("UIGradient", {
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.55), NumberSequenceKeypoint.new(1, 1) }),
+		}),
+	})
+	task.spawn(function()
+		task.wait(order * 0.35)
+		while shine.Parent do
+			shine.Position = UDim2.fromScale(-0.8, -0.3)
+			TweenService:Create(shine, TweenInfo.new(0.7, Enum.EasingStyle.Quad), { Position = UDim2.fromScale(1.3, -0.3) }):Play()
+			task.wait(4)
+		end
+	end)
 	local scale = Ui.new("UIScale", { Parent = t })
 	t.MouseEnter:Connect(function()
 		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Back), { Scale = 1.07 }):Play()
@@ -410,155 +432,16 @@ end
 
 -- ============================================================ Summon
 
-local resultOverlay: Frame
-
-local function hallPedestal(): BasePart?
-	local lobby = workspace:FindFirstChild("Lobby")
-	local hall = lobby and lobby:FindFirstChild("SummonHall")
-	return hall and hall:FindFirstChild("Pedestal") :: BasePart?
-end
-
--- the best pulled unit appears on the Summon Hall pedestal in a beam of its rarity colour
-local function cinematic(unitId: string, rarity: string): () -> ()
-	local pedestal = hallPedestal()
-	local camera = workspace.CurrentCamera
-	if not pedestal then
-		return function() end
-	end
-	local oldType = camera.CameraType
-	local oldCf = camera.CFrame
-	camera.CameraType = Enum.CameraType.Scriptable
-	-- the pedestal is an upright cylinder: its height is Size.X
-	local top = pedestal.Position + Vector3.new(0, pedestal.Size.X / 2 + 0.6, 0)
-	local look = CFrame.lookAt(top + Vector3.new(0, 7, -20), top + Vector3.new(0, 3.5, 0))
-	TweenService:Create(camera, TweenInfo.new(0.7, Enum.EasingStyle.Quad), { CFrame = look }):Play()
-	local color = rarityColor(rarity)
-	local folder = Instance.new("Folder")
-	folder.Name = "SummonFx"
-	folder.Parent = workspace
-	local beam = Instance.new("Part")
-	beam.Anchored = true
-	beam.CanCollide = false
-	beam.CanQuery = false
-	beam.Material = Enum.Material.Neon
-	beam.Color = color
-	beam.Shape = Enum.PartType.Cylinder
-	beam.Size = Vector3.new(60, 0.5, 0.5)
-	beam.CFrame = CFrame.new(top + Vector3.new(0, 30, 0)) * CFrame.Angles(0, 0, math.rad(90))
-	beam.Transparency = 0.2
-	beam.Parent = folder
-	TweenService:Create(beam, TweenInfo.new(0.6, Enum.EasingStyle.Back), { Size = Vector3.new(60, 9, 9) }):Play()
-	local glow = Instance.new("PointLight")
-	glow.Color = color
-	glow.Range = 30
-	glow.Brightness = 4
-	glow.Parent = beam
-	local sparks = Instance.new("ParticleEmitter")
-	sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-	sparks.Color = ColorSequence.new(color)
-	sparks.LightEmission = 1
-	sparks.Rate = 60
-	sparks.Speed = NumberRange.new(6, 14)
-	sparks.SpreadAngle = Vector2.new(180, 180)
-	sparks.Lifetime = NumberRange.new(0.6, 1.2)
-	sparks.Size = NumberSequence.new(1, 0)
-	sparks.Parent = beam
-	task.delay(0.9, function()
-		if not folder.Parent then
-			return
-		end
-		TweenService:Create(beam, TweenInfo.new(0.4), { Size = Vector3.new(60, 0.2, 0.2), Transparency = 1 }):Play()
-		local model = ModelFactory.build(unitId, 1.4, true)
-		model:PivotTo(CFrame.new(top) * CFrame.Angles(0, math.pi, 0))
-		model.Parent = folder
-		Skins.apply(model, true)
-		sparks.Rate = 15
-	end)
-	return function()
-		folder:Destroy()
-		camera.CameraType = oldType
-		camera.CFrame = oldCf
-	end
-end
-
 local function showSummonResults(results)
-	local best = results[1]
-	for _, r in results do
-		if Rarities.Info[r.rarity].rank > Rarities.Info[best.rarity].rank then
-			best = r
-		end
-	end
-	local finish = cinematic(best.unitId, best.rarity)
 	open(nil)
-	task.wait(hallPedestal() and 2.2 or 0)
-
-	Ui.clear(resultOverlay)
-	resultOverlay.Visible = true
-	local bestRank = Rarities.Info[best.rarity].rank
-	local banner = ({ "NICE PULL!", "RARE PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
-	local title = Ui.title({
-		Text = banner,
-		Size = UDim2.fromOffset(700, 70),
-		Position = UDim2.new(0.5, 0, 0.5, -250),
-		AnchorPoint = Vector2.new(0.5, 0),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextColor3 = rarityColor(best.rarity),
-		MaxText = 64,
-		Outline = 3,
-		Parent = resultOverlay,
-	})
-	Ui.pop(title)
-	local grid = Ui.new("Frame", {
-		Size = UDim2.fromOffset(5 * 146, (#results > 5 and 2 or 1) * 190),
-		Position = UDim2.fromScale(0.5, 0.5),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundTransparency = 1,
-		Parent = resultOverlay,
-	})
-	Ui.new("UIGridLayout", {
-		CellSize = UDim2.fromOffset(134, 178),
-		CellPadding = UDim2.fromOffset(12, 12),
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = grid,
-	})
-	for i, r in results do
-		local holder = Ui.new("Frame", { LayoutOrder = i, BackgroundTransparency = 1, Parent = grid })
-		local card = Ui.unitCard(holder, { unitId = r.unitId, level = 1 }, UDim2.new(1, 0, 1, -30))
-		card.Visible = false
-		Ui.chip(r.rarity, rarityColor(r.rarity), { Size = UDim2.fromOffset(100, 22), Position = UDim2.new(0.5, -50, 0, -11), ZIndex = 6, Parent = card })
-		local g = r.grades or Progression.DefaultGrades
-		local gradeRow = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 1, -24), BackgroundTransparency = 1, Visible = false, Parent = holder }, { Ui.list(Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Center) })
-		for _, k in { "d", "s", "r" } do
-			Ui.gradeBadge(g[k], { Size = UDim2.fromOffset(40, 22), MaxText = 18, Parent = gradeRow })
-		end
-		task.delay(0.1 * i, function()
-			card.Visible = true
-			gradeRow.Visible = true
-			Ui.pop(card)
-		end)
-	end
-	local ok
-	ok = Ui.button("AWESOME!", C.green, function()
-		resultOverlay.Visible = false
-		finish()
+	SummonFx.play(results, function()
 		open("Summon")
-	end, { Size = UDim2.fromOffset(240, 58), Position = UDim2.new(0.5, 0, 0.5, 220), AnchorPoint = Vector2.new(0.5, 0), MaxText = 30, Parent = resultOverlay })
-	ok.Font = Ui.TitleFont
+	end)
 end
 
 local function buildSummon()
 	local window, content = Ui.window(gui, "Summon", "✨", UDim2.fromOffset(980, 560), closeButton)
 	windows.Summon = window
-	resultOverlay = Ui.new("Frame", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(10, 6, 24),
-		BackgroundTransparency = 0.3,
-		Visible = false,
-		ZIndex = 10,
-		Parent = gui,
-	})
 
 	refreshers.Summon = function()
 		local data = Store.data
@@ -1155,7 +1038,6 @@ function LobbyUI.setVisible(visible: boolean)
 	gui.Enabled = visible
 	if not visible then
 		open(nil)
-		resultOverlay.Visible = false
 	end
 end
 

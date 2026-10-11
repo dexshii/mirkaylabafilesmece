@@ -34,6 +34,7 @@ end)
 
 local profiles: { [Player]: Data } = {}
 local canSave: { [Player]: boolean } = {} -- only after a successful load, so a failed load never overwrites a save
+local loadedOk: { [Player]: boolean } = {}
 local saving: { [Player]: boolean } = {}
 local changedCallback: ((Player, Data) -> ())? = nil
 
@@ -100,7 +101,10 @@ local function load(player: Player): (Data, boolean)
 	end
 	for attempt = 1, 3 do
 		local ok, result = pcall(function()
-			return (store :: DataStore):GetAsync("p_" .. player.UserId)
+			-- no cache: the player may have just come from another server that saved a moment ago
+			local options = Instance.new("DataStoreGetOptions")
+			options.UseCache = false
+			return (store :: DataStore):GetAsync("p_" .. player.UserId, options)
 		end)
 		if ok then
 			return reconcile(result), true
@@ -126,6 +130,21 @@ function DataService.save(player: Player)
 	if not ok then
 		warnOnce("DataStore save failed: " .. tostring(err))
 	end
+end
+
+-- saves now (waiting for a save in progress) and stops this server from saving again, before the player is
+-- teleported to another server that will load their data
+function DataService.release(player: Player)
+	while saving[player] do
+		task.wait(0.1)
+	end
+	DataService.save(player)
+	canSave[player] = false
+end
+
+-- undoes release when the teleport failed
+function DataService.resume(player: Player)
+	canSave[player] = loadedOk[player] == true
 end
 
 function DataService.get(player: Player): Data?
@@ -165,6 +184,7 @@ function DataService.start()
 		if player.Parent then
 			profiles[player] = data
 			canSave[player] = ok
+			loadedOk[player] = ok
 			DataService.changed(player)
 		end
 	end
@@ -176,6 +196,7 @@ function DataService.start()
 		DataService.save(player)
 		profiles[player] = nil
 		canSave[player] = nil
+		loadedOk[player] = nil
 	end)
 	game:BindToClose(function()
 		for _, p in Players:GetPlayers() do
