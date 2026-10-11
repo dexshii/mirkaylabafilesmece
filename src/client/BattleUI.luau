@@ -17,6 +17,7 @@ local Net = require(Shared.Net)
 
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
+local Skins = require(script.Parent.Skins)
 
 local BattleUI = {}
 
@@ -145,6 +146,7 @@ local function startPlacement(slot: number)
 		end
 	end
 	model.Parent = workspace
+	Skins.apply(model, true)
 	ghost = model
 	local s = Stats.compute(member.unitId, 0, member.trait, nil, memberUnit(member))
 	ghostRange = rangeDisc(math.max(s.range, 2), C.green)
@@ -433,18 +435,27 @@ local function applyLighting(mapId: string?)
 			old:Destroy()
 		end
 	end
+	local theme
 	if not mapId then
 		for k, v in defaultLighting do
 			(Lighting :: any)[k] = v
 		end
-		return
+		-- the lobby's own look: a soft sunny haze
+		theme = {
+			atmosphere = { density = 0.25, color = Color3.fromRGB(205, 225, 255), decay = Color3.fromRGB(120, 160, 220), haze = 1.4 },
+			saturation = 0.2,
+			tint = Color3.fromRGB(255, 250, 240),
+		}
+	else
+		theme = Maps.ById[mapId].theme
 	end
-	local theme = Maps.ById[mapId].theme
-	Lighting.ClockTime = theme.clock
-	Lighting.Ambient = theme.ambient
-	Lighting.OutdoorAmbient = theme.ambient
-	Lighting.FogColor = theme.fog
-	Lighting.FogEnd = 100000
+	if mapId then
+		Lighting.ClockTime = theme.clock
+		Lighting.Ambient = theme.ambient
+		Lighting.OutdoorAmbient = theme.ambient
+		Lighting.FogColor = theme.fog
+		Lighting.FogEnd = 100000
+	end
 	local atmo = Instance.new("Atmosphere")
 	atmo.Name = "SkMapAtmosphere"
 	atmo.Density = theme.atmosphere.density
@@ -532,7 +543,7 @@ local function onState(state)
 
 	if state.boss then
 		bossFrame.Visible = true
-		bossName.Text = ModelFactory.displayName(state.boss.id, state.boss.name) .. (state.boss.immune and "  🛡" or "")
+		bossName.Text = Ui.enemyName(state.boss.id, state.boss.name) .. (state.boss.immune and "  🛡" or "")
 		bossFill.Size = UDim2.fromScale(math.clamp(state.boss.hp / state.boss.maxHp, 0, 1), 1)
 		bossHp.Text = string.format("%s / %s (%d%%)", Ui.short(state.boss.hp), Ui.short(state.boss.maxHp), math.floor(state.boss.hp / state.boss.maxHp * 100 + 0.5))
 	else
@@ -748,6 +759,7 @@ end
 
 function BattleUI.start()
 	buildHud()
+	applyLighting(nil)
 	Store.BattleChanged:Connect(onState)
 	Net.ev("BattleEnded").OnClientEvent:Connect(showEnd)
 

@@ -980,12 +980,17 @@ end
 function ModelFactory.build(key: string, scale: number?, anchored: boolean?): Model
 	local custom = customModel(key)
 	if custom then
-		return buildCustom(custom, key, scale or 1, anchored)
+		local m = buildCustom(custom, key, scale or 1, anchored)
+		return m
 	end
 	local design = designs[key] or designs.grumble
 	local s = scale or 1
 	local model = Instance.new("Model")
 	model.Name = key
+	-- what the client's SM64 skins (src/client/Skins) look for
+	model:SetAttribute("SkinKey", key)
+	model:SetAttribute("SkinScale", s)
+	model:SetAttribute("SkinHeight", ModelFactory.height(key))
 
 	local root = Instance.new("Part")
 	root.Name = "Root"
@@ -2704,6 +2709,7 @@ function Battle:destroy()
 		self.arena:Destroy()
 		self.arena = nil
 	end
+	MapBuilder.clear(self.origin)
 	if self.player.Parent then
 		stateEvent:FireClient(self.player, { active = false })
 	end
@@ -3157,10 +3163,31 @@ local function buildDecor(lobby: Instance)
 	end
 end
 
+local function buildTerrain(lobby: Instance)
+	-- real terrain instead of the flat floor part: a grass meadow, hills around it and a pond
+	local terrain = workspace.Terrain
+	terrain:FillBlock(CFrame.new(0, -6, 0), Vector3.new(440, 12, 440), Enum.Material.Grass)
+	local rng = Random.new(11)
+	for i = 1, 18 do
+		local a = i / 18 * math.pi * 2 + rng:NextNumber(-0.15, 0.15)
+		local r = rng:NextNumber(150, 200)
+		terrain:FillBall(Vector3.new(math.cos(a) * r, -6, math.sin(a) * r), rng:NextNumber(26, 46), rng:NextNumber() < 0.8 and Enum.Material.LeafyGrass or Enum.Material.Rock)
+	end
+	terrain:FillCylinder(CFrame.new(78, -2, -70), 4, 18, Enum.Material.Air)
+	terrain:FillCylinder(CFrame.new(78, -3, -70), 2, 18, Enum.Material.Water)
+	terrain:FillCylinder(CFrame.new(-80, -2, 30), 4, 14, Enum.Material.Air)
+	terrain:FillCylinder(CFrame.new(-80, -3, 30), 2, 14, Enum.Material.Water)
+	local floor = lobby:FindFirstChild("Floor")
+	if floor then
+		floor:Destroy()
+	end
+end
+
 function Lobby.build()
 	local lobby = workspace:FindFirstChild("Lobby") or Instance.new("Model")
 	lobby.Name = "Lobby"
 	lobby.Parent = workspace
+	buildTerrain(lobby)
 	buildDecor(lobby)
 	buildCastle(lobby)
 	buildSummonHall(lobby)
@@ -4049,6 +4076,20 @@ end
 
 -- ============================================================ build
 
+-- terrain materials per map: the field's surface, the cliffs under it, the lowland around it, and its lakes
+local TERRAIN = {
+	meadow = { field = Enum.Material.Grass, cliff = Enum.Material.Rock, world = Enum.Material.LeafyGrass, lake = Enum.Material.Water },
+	desert = { field = Enum.Material.Sand, cliff = Enum.Material.Sandstone, world = Enum.Material.Sand, lake = Enum.Material.Water },
+	frost = { field = Enum.Material.Snow, cliff = Enum.Material.Glacier, world = Enum.Material.Snow, lake = Enum.Material.Ice },
+	magma = { field = Enum.Material.Basalt, cliff = Enum.Material.Basalt, world = Enum.Material.Basalt, lake = Enum.Material.CrackedLava },
+	starcastle = { field = Enum.Material.Pavement, cliff = Enum.Material.Limestone, world = Enum.Material.Slate, lake = Enum.Material.Water },
+}
+
+-- removes a map's terrain
+function MapBuilder.clear(origin: Vector3)
+	workspace.Terrain:FillBlock(CFrame.new(origin + Vector3.new(0, 10, 0)), Vector3.new(1200, 120, 1200), Enum.Material.Air)
+end
+
 local function nearPath(waypoints: { { number } }, x: number, z: number, margin: number): boolean
 	for i = 1, #waypoints - 1 do
 		local a, b = waypoints[i], waypoints[i + 1]
@@ -4071,38 +4112,42 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 	arena.Name = "Arena_" .. def.id
 	local half = Maps.FieldHalf
 
-	-- the play field: tiles (the ground units are placed on) with a little colour variation
+	-- the play field and the world around it are Roblox Terrain; units are placed on an invisible "Ground" part
+	local terrain = workspace.Terrain
+	local look = TERRAIN[def.id]
+	-- the raised field: rock cliffs with the theme's material on top
+	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -10, 0)), Vector3.new(half * 2 + 8, 12, half * 2 + 8), look.cliff)
+	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -2, 0)), Vector3.new(half * 2 + 8, 4, half * 2 + 8), look.field)
+	-- the lowland around it, with hills and lakes
+	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -20, 0)), Vector3.new(1100, 12, 1100), look.world)
+	for _ = 1, 22 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(190, 480)
+		local size = rng:NextNumber(30, 70)
+		terrain:FillBall(origin + Vector3.new(math.cos(a) * r, -16, math.sin(a) * r), size, rng:NextNumber() < 0.7 and look.world or look.cliff)
+	end
+	for _ = 1, 3 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(170, 300)
+		local c = origin + Vector3.new(math.cos(a) * r, -16, math.sin(a) * r)
+		terrain:FillCylinder(CFrame.new(c), 4, rng:NextNumber(25, 45), look.lake)
+	end
 	local ground = Instance.new("Model")
 	ground.Name = "Ground"
 	ground.Parent = arena
-	local tile = 30
-	local n = math.floor(half * 2 / tile)
-	for i = 0, n - 1 do
-		for j = 0, n - 1 do
-			local x = -half + tile * (i + 0.5)
-			local z = -half + tile * (j + 0.5)
-			local c
-			if def.id == "starcastle" then
-				c = (i + j) % 2 == 0 and theme.ground or theme.grass2
-			else
-				c = theme.ground:Lerp(theme.grass2, ((i + j) % 2) * 0.5 + rng:NextNumber(0, 0.25))
-			end
-			part(ground, Vector3.new(tile, 4, tile), CFrame.new(origin + Vector3.new(x, -2, z)), c, { material = theme.groundMaterial, collide = true, query = true, shadow = false })
-		end
-	end
-	-- the field's edge and the cliff under it
+	local placeable = part(ground, Vector3.new(half * 2, 1, half * 2), CFrame.new(origin + Vector3.new(0, -0.5, 0)), theme.ground, { query = true })
+	placeable.Transparency = 1
+	placeable:SetAttribute("Placeable", true)
+	-- a low stone border around the field
 	for _, side in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
 		local along = side[1] == 0
 		local size = along and Vector3.new(half * 2 + 6, 1.2, 3) or Vector3.new(3, 1.2, half * 2 + 6)
 		part(arena, size, CFrame.new(origin + Vector3.new(side[1] * (half + 1.5), 0.6, side[2] * (half + 1.5))), theme.curb, { material = Enum.Material.Cobblestone, collide = true })
 	end
-	part(arena, Vector3.new(half * 2 + 6, 14, half * 2 + 6), CFrame.new(origin + Vector3.new(0, -11, 0)), shade(theme.ground, -0.45), { material = Enum.Material.Rock, collide = true })
 
-	-- the world around it
 	local world = Instance.new("Folder")
 	world.Name = "Scenery"
 	world.Parent = arena
-	part(world, Vector3.new(1100, 4, 1100), CFrame.new(origin + Vector3.new(0, -16, 0)), shade(theme.grass2, -0.15), { material = theme.groundMaterial, shadow = false, collide = true })
 	local makeScenery = scenery[def.id]
 	for i = 1, 26 do
 		local a = i / 26 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
@@ -4233,6 +4278,7 @@ local Net = require(Shared.Net)
 
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
+local Skins = require(script.Parent.Skins)
 
 local BattleUI = {}
 
@@ -4361,6 +4407,7 @@ local function startPlacement(slot: number)
 		end
 	end
 	model.Parent = workspace
+	Skins.apply(model, true)
 	ghost = model
 	local s = Stats.compute(member.unitId, 0, member.trait, nil, memberUnit(member))
 	ghostRange = rangeDisc(math.max(s.range, 2), C.green)
@@ -4649,18 +4696,27 @@ local function applyLighting(mapId: string?)
 			old:Destroy()
 		end
 	end
+	local theme
 	if not mapId then
 		for k, v in defaultLighting do
 			(Lighting :: any)[k] = v
 		end
-		return
+		-- the lobby's own look: a soft sunny haze
+		theme = {
+			atmosphere = { density = 0.25, color = Color3.fromRGB(205, 225, 255), decay = Color3.fromRGB(120, 160, 220), haze = 1.4 },
+			saturation = 0.2,
+			tint = Color3.fromRGB(255, 250, 240),
+		}
+	else
+		theme = Maps.ById[mapId].theme
 	end
-	local theme = Maps.ById[mapId].theme
-	Lighting.ClockTime = theme.clock
-	Lighting.Ambient = theme.ambient
-	Lighting.OutdoorAmbient = theme.ambient
-	Lighting.FogColor = theme.fog
-	Lighting.FogEnd = 100000
+	if mapId then
+		Lighting.ClockTime = theme.clock
+		Lighting.Ambient = theme.ambient
+		Lighting.OutdoorAmbient = theme.ambient
+		Lighting.FogColor = theme.fog
+		Lighting.FogEnd = 100000
+	end
 	local atmo = Instance.new("Atmosphere")
 	atmo.Name = "SkMapAtmosphere"
 	atmo.Density = theme.atmosphere.density
@@ -4748,7 +4804,7 @@ local function onState(state)
 
 	if state.boss then
 		bossFrame.Visible = true
-		bossName.Text = ModelFactory.displayName(state.boss.id, state.boss.name) .. (state.boss.immune and "  🛡" or "")
+		bossName.Text = Ui.enemyName(state.boss.id, state.boss.name) .. (state.boss.immune and "  🛡" or "")
 		bossFill.Size = UDim2.fromScale(math.clamp(state.boss.hp / state.boss.maxHp, 0, 1), 1)
 		bossHp.Text = string.format("%s / %s (%d%%)", Ui.short(state.boss.hp), Ui.short(state.boss.maxHp), math.floor(state.boss.hp / state.boss.maxHp * 100 + 0.5))
 	else
@@ -4964,6 +5020,7 @@ end
 
 function BattleUI.start()
 	buildHud()
+	applyLighting(nil)
 	Store.BattleChanged:Connect(onState)
 	Net.ev("BattleEnded").OnClientEvent:Connect(showEnd)
 
@@ -5285,6 +5342,7 @@ local ModelFactory = require(Shared.ModelFactory)
 
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
+local Skins = require(script.Parent.Skins)
 
 local LobbyUI = {}
 
@@ -5345,7 +5403,21 @@ local function mapUnlocked(data, index: number): boolean
 	return index == 1 or (data.progress[Maps.List[index - 1].id] or 0) >= Maps.Stages
 end
 
+local blur: BlurEffect? = nil
+local function setBlur(on: boolean)
+	local effect = blur
+	if not effect then
+		effect = Instance.new("BlurEffect")
+		effect.Name = "MenuBlur"
+		effect.Size = 0
+		effect.Parent = game:GetService("Lighting")
+		blur = effect
+	end
+	TweenService:Create(effect, TweenInfo.new(0.2), { Size = on and 14 or 0 }):Play()
+end
+
 local function open(name: string?)
+	setBlur(name ~= nil)
 	for n, w in windows do
 		if n == name then
 			if not w.Visible then
@@ -5373,21 +5445,22 @@ local crystalsLabel: TextLabel
 local unitsLabel: TextLabel
 local teamTray: Frame
 
-local function tile(parent: Instance, emoji: string, label: string, color: Color3, order: number, onClick: () -> ())
+local function tile(parent: Instance, emoji: string, label: string, color: Color3, order: number, key: string, onClick: () -> ())
 	local t = Ui.new("TextButton", {
 		Text = "",
 		AutoButtonColor = false,
-		Size = UDim2.fromOffset(112, 92),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		LayoutOrder = order,
 		Parent = parent,
-	}, { Ui.corner(16), Ui.stroke(C.ink, 3), Ui.gradient(Ui.lighten(color, 0.25), Ui.darken(color, 0.3)) })
-	Ui.new("Frame", { Size = UDim2.new(1, -8, 0.4, 0), Position = UDim2.fromOffset(4, 4), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.82, Parent = t }, { Ui.corner(12) })
-	Ui.text({ Text = emoji, Size = UDim2.new(1, 0, 0, 50), Position = UDim2.fromOffset(0, 4), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 44, Outline = 0, Parent = t })
-	Ui.title({ Text = label, Size = UDim2.new(1, -8, 0, 26), Position = UDim2.new(0, 4, 1, -30), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 22, Parent = t })
+	}, { Ui.corner(14), Ui.stroke(C.ink, 3), Ui.gradient(Ui.lighten(color, 0.2), Ui.darken(color, 0.35)) })
+	Ui.new("Frame", { Size = UDim2.new(1, -8, 0.42, 0), Position = UDim2.fromOffset(4, 4), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.85, Parent = t }, { Ui.corner(10) })
+	Ui.text({ Text = emoji, Size = UDim2.new(1, 0, 0, 46), Position = UDim2.fromOffset(0, 6), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 40, Outline = 0, Parent = t })
+	Ui.title({ Text = label, Size = UDim2.new(1, -6, 0, 22), Position = UDim2.new(0, 3, 1, -26), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 19, Parent = t })
+	local badge = Ui.new("Frame", { Size = UDim2.fromOffset(24, 24), Position = UDim2.fromOffset(-6, -6), BackgroundColor3 = Color3.fromRGB(30, 24, 50), ZIndex = 3, Parent = t }, { Ui.corner(6), Ui.stroke(C.ink, 2) })
+	Ui.text({ Text = key, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 15, ZIndex = 4, Parent = badge })
 	local scale = Ui.new("UIScale", { Parent = t })
 	t.MouseEnter:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Back), { Scale = 1.08 }):Play()
+		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Back), { Scale = 1.07 }):Play()
 	end)
 	t.MouseLeave:Connect(function()
 		TweenService:Create(scale, TweenInfo.new(0.12), { Scale = 1 }):Play()
@@ -5395,23 +5468,28 @@ local function tile(parent: Instance, emoji: string, label: string, color: Color
 	t.Activated:Connect(onClick)
 end
 
+local hotkeys: { [Enum.KeyCode]: string } = {}
+
 local function buildMenu()
 	local menu = Ui.new("Frame", {
-		Size = UDim2.fromOffset(112, 520),
+		Size = UDim2.fromOffset(206, 330),
 		Position = UDim2.new(0, 16, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BackgroundTransparency = 1,
 		Parent = gui,
-	}, { Ui.list(Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center) })
+	}, {
+		Ui.new("UIGridLayout", { CellSize = UDim2.fromOffset(98, 96), CellPadding = UDim2.fromOffset(10, 12), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
 	local items = {
-		{ "⚔️", "PLAY", C.green, "Play" },
-		{ "✨", "SUMMON", C.pink, "Summon" },
-		{ "🎒", "UNITS", C.blue, "Units" },
-		{ "🔮", "TRAITS", C.purple, "Traits" },
-		{ "🏆", "CHALLENGE", C.orange, "Challenges" },
+		{ "⚔️", "PLAY", C.green, "Play", "P", Enum.KeyCode.P },
+		{ "✨", "SUMMON", C.pink, "Summon", "J", Enum.KeyCode.J },
+		{ "🎒", "UNITS", C.blue, "Units", "H", Enum.KeyCode.H },
+		{ "🔮", "TRAITS", C.purple, "Traits", "T", Enum.KeyCode.T },
+		{ "🏆", "QUESTS", C.orange, "Challenges", "C", Enum.KeyCode.C },
 	}
 	for i, it in items do
-		tile(menu, it[1], it[2], it[3], i, function()
+		hotkeys[it[6]] = it[4]
+		tile(menu, it[1], it[2], it[3], i, it[5], function()
 			open(openName ~= it[4] and it[4] or nil)
 		end)
 	end
@@ -5453,13 +5531,14 @@ local function refreshTeamTray()
 		local uid = data.team[i]
 		local e = uid ~= "" and entryOf(data, uid)
 		if e then
-			Ui.unitCard(teamTray, { unitId = e.u, level = e.l, trait = e.t, price = Stats.placeCost(e.u, e.t) }, UDim2.fromOffset(92, 108), function()
+			local card = Ui.unitCard(teamTray, { unitId = e.u, level = e.l, trait = e.t, price = Stats.placeCost(e.u, e.t) }, UDim2.fromOffset(92, 108), function()
 				selectedUnit = e.uid
 				open("Units")
-			end).LayoutOrder = i
+			end)
+			card.LayoutOrder = i
 		else
 			local slot = Ui.new("TextButton", {
-				Text = "+",
+				Text = tostring(i),
 				Font = Ui.TitleFont,
 				TextScaled = true,
 				TextColor3 = C.muted,
@@ -5559,7 +5638,7 @@ local function buildPlay()
 		}, { Ui.corner(12), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(150, 40, 70), Color3.fromRGB(50, 10, 30)) })
 		Ui.viewport(def.boss, { Size = UDim2.new(1, 0, 1, -26) }, true).Parent = bossCard
 		Ui.chip("BOSS", C.red, { Size = UDim2.fromOffset(60, 20), Position = UDim2.new(0.5, -30, 0, -10), ZIndex = 3, Parent = bossCard })
-		Ui.text({ Text = ModelFactory.displayName(boss.id, boss.name), Size = UDim2.new(1, -8, 0, 20), Position = UDim2.new(0, 4, 1, -24), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 15, Parent = bossCard })
+		Ui.text({ Text = Ui.enemyName(boss.id, boss.name), Size = UDim2.new(1, -8, 0, 20), Position = UDim2.new(0, 4, 1, -24), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 15, Parent = bossCard })
 		Ui.text({
 			Text = boss.desc,
 			Size = UDim2.new(1, -140, 0, 40),
@@ -5587,7 +5666,7 @@ local function buildPlay()
 				Parent = row,
 			}, { Ui.corner(10), Ui.stroke(C.ink, 2), Ui.gradient(Color3.fromRGB(80, 66, 140), Color3.fromRGB(40, 30, 80)) })
 			Ui.viewport(id, { Size = UDim2.new(1, 0, 1, -22) }).Parent = holder
-			Ui.text({ Text = ModelFactory.displayName(id, e.name), Size = UDim2.new(1, -6, 0, 18), Position = UDim2.new(0, 3, 1, -20), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 13, Parent = holder })
+			Ui.text({ Text = Ui.enemyName(id, e.name), Size = UDim2.new(1, -6, 0, 18), Position = UDim2.new(0, 3, 1, -20), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 13, Parent = holder })
 			if e.kind == "flying" then
 				Ui.chip("AIR", C.blue, { Size = UDim2.fromOffset(40, 18), Position = UDim2.fromOffset(4, 4), ZIndex = 3, Parent = holder })
 			end
@@ -5699,6 +5778,7 @@ local function cinematic(unitId: string, rarity: string): () -> ()
 		local model = ModelFactory.build(unitId, 1.4, true)
 		model:PivotTo(CFrame.new(top) * CFrame.Angles(0, math.pi, 0))
 		model.Parent = folder
+		Skins.apply(model, true)
 		sparks.Rate = 15
 	end)
 	return function()
@@ -6301,6 +6381,16 @@ function LobbyUI.start()
 	refreshAll()
 
 	-- walking up to the Summon Hall pedestal or the battle portal opens their windows
+	game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
+		if processed or not gui.Enabled then
+			return
+		end
+		local target = hotkeys[input.KeyCode]
+		if target then
+			open(openName ~= target and target or nil)
+		end
+	end)
+
 	ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		local target = prompt:GetAttribute("OpensWindow")
 		if type(target) == "string" and windows[target] and gui.Enabled then
@@ -6326,6 +6416,7 @@ local Fx = require(script.Parent.Fx)
 local LobbyUI = require(script.Parent.LobbyUI)
 local BattleUI = require(script.Parent.BattleUI)
 local Ui = require(script.Parent.Ui)
+local Skins = require(script.Parent.Skins)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
@@ -6333,6 +6424,7 @@ end)
 
 Store.start()
 Fx.start()
+Skins.start()
 
 -- wait for the save data before building the lobby
 while not Store.data do
@@ -6366,6 +6458,189 @@ Ui.toast("Welcome to Star Kingdom Defense, " .. Players.LocalPlayer.DisplayName 
           </Properties>
         </Item>
         <Item class="ModuleScript" referent="27">
+          <Properties>
+            <string name="Name">Skins</string>
+            <string name="Source"><![CDATA[-- Puts SM64 meshes on units, enemies, statues and UI models when ReplicatedStorage.SM64Models exists (a private
+-- build made with tools/sm64_import --luau). Each mesh is built once on this client with EditableMesh and
+-- EditableImage, then cloned onto every model whose "SkinKey" attribute names it; the model's own parts are hidden.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local AssetService = game:GetService("AssetService")
+
+local Skins = {}
+
+local folder = ReplicatedStorage:FindFirstChild("SM64Models")
+local templates: { [string]: MeshPart | false } = {}
+local building: { [string]: BindableEvent } = {}
+
+local function decode64(s: string): buffer
+	local map = {}
+	local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	for i = 1, 64 do
+		map[string.byte(chars, i)] = i - 1
+	end
+	local clean = s:gsub("=", "")
+	local n = #clean
+	local out = buffer.create(n * 3 // 4)
+	local o = 0
+	for i = 1, n - 3, 4 do
+		local a, b, c, d = map[string.byte(clean, i)], map[string.byte(clean, i + 1)], map[string.byte(clean, i + 2)], map[string.byte(clean, i + 3)]
+		local v = a * 262144 + b * 4096 + c * 64 + d
+		buffer.writeu8(out, o, v // 65536)
+		buffer.writeu8(out, o + 1, (v // 256) % 256)
+		buffer.writeu8(out, o + 2, v % 256)
+		o += 3
+	end
+	local rest = n % 4
+	if rest >= 2 then
+		local i = n - rest + 1
+		local a, b = map[string.byte(clean, i)], map[string.byte(clean, i + 1)]
+		local c = rest == 3 and map[string.byte(clean, i + 2)] or 0
+		local v = a * 262144 + b * 4096 + c * 64
+		buffer.writeu8(out, o, v // 65536)
+		if rest == 3 then
+			buffer.writeu8(out, o + 1, (v // 256) % 256)
+		end
+	end
+	return out
+end
+
+function Skins.available(): boolean
+	return folder ~= nil
+end
+
+function Skins.displayName(key: string): string?
+	local names = folder and folder:FindFirstChild("Names")
+	if names and names:IsA("ModuleScript") then
+		local ok, t = pcall(require, names)
+		if ok and type(t) == "table" then
+			return t[key]
+		end
+	end
+	return nil
+end
+
+local function build(key: string): MeshPart?
+	local module = folder and folder:FindFirstChild(key)
+	if not module or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local data = require(module) :: any
+	if data.alias then
+		return Skins.template(data.alias)
+	end
+	local pos = decode64(data.positions)
+	local uvs = decode64(data.uvs)
+	local mesh = AssetService:CreateEditableMesh({})
+	local count = buffer.len(pos) // 12
+	for t = 0, count // 3 - 1 do
+		local v, u = {}, {}
+		for k = 0, 2 do
+			local i = t * 3 + k
+			v[k + 1] = mesh:AddVertex(Vector3.new(buffer.readf32(pos, i * 12), buffer.readf32(pos, i * 12 + 4), buffer.readf32(pos, i * 12 + 8)))
+			u[k + 1] = mesh:AddUV(Vector2.new(buffer.readf32(uvs, i * 8), buffer.readf32(uvs, i * 8 + 4)))
+		end
+		local face = mesh:AddTriangle(v[1], v[2], v[3])
+		mesh:SetFaceUVs(face, u)
+	end
+	local part = AssetService:CreateMeshPartAsync(Content.fromObject(mesh))
+	local image = AssetService:CreateEditableImage({ Size = Vector2.new(data.width, data.height) })
+	image:WritePixelsBuffer(Vector2.zero, Vector2.new(data.width, data.height), decode64(data.image))
+	part.TextureContent = Content.fromObject(image)
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanTouch = false
+	part.Massless = true
+	part.Name = "SM64"
+	return part
+end
+
+-- the mesh for a key, built on first use (yields); nil when there is none
+function Skins.template(key: string): MeshPart?
+	local cached = templates[key]
+	if cached ~= nil then
+		return cached or nil
+	end
+	if building[key] then
+		building[key].Event:Wait()
+		return templates[key] or nil
+	end
+	local done = Instance.new("BindableEvent")
+	building[key] = done
+	local ok, result = pcall(build, key)
+	if not ok then
+		warn("[SM64] could not build " .. key .. ": " .. tostring(result))
+	end
+	templates[key] = ok and result or false
+	building[key] = nil
+	done:Fire()
+	return templates[key] or nil
+end
+
+-- swaps a model's look for its SM64 mesh. local = true when the model is this client's own copy (viewports)
+function Skins.apply(model: Model, isLocal: boolean?)
+	if not folder or model:GetAttribute("Skinned") then
+		return
+	end
+	local key = model:GetAttribute("SkinKey")
+	local root = model.PrimaryPart or model:FindFirstChild("Root")
+	if type(key) ~= "string" or not root or not root:IsA("BasePart") then
+		return
+	end
+	model:SetAttribute("Skinned", true)
+	task.spawn(function()
+		local template = Skins.template(key)
+		if not template or not model.Parent then
+			return
+		end
+		local scale = model:GetAttribute("SkinScale")
+		local height = model:GetAttribute("SkinHeight")
+		local target = (type(height) == "number" and height or 4.5) * (type(scale) == "number" and scale or 1)
+		local part = template:Clone()
+		part.Size = template.Size * (target / template.Size.Y)
+		part.CFrame = root.CFrame * CFrame.new(0, part.Size.Y / 2, 0)
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") and d ~= root then
+				if isLocal then
+					d.Transparency = 1
+				else
+					d.LocalTransparencyModifier = 1
+				end
+			end
+		end
+		if isLocal then
+			part.Anchored = true
+		else
+			part.Anchored = false
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = root
+			weld.Part1 = part
+			weld.Parent = part
+		end
+		part.Parent = model
+	end)
+end
+
+-- skin every model in the world that has a SkinKey, now and as they appear
+function Skins.start()
+	if not folder then
+		return
+	end
+	local function check(inst: Instance)
+		if inst:IsA("Model") and inst:GetAttribute("SkinKey") then
+			Skins.apply(inst)
+		end
+	end
+	for _, d in workspace:GetDescendants() do
+		check(d)
+	end
+	workspace.DescendantAdded:Connect(check)
+end
+
+return Skins
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="28">
           <Properties>
             <string name="Name">Store</string>
             <string name="Source"><![CDATA[-- The client's copy of the player's save data and the current battle state, with change signals.
@@ -6415,7 +6690,7 @@ return Store
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="28">
+        <Item class="ModuleScript" referent="29">
           <Properties>
             <string name="Name">Ui</string>
             <string name="Source"><![CDATA[-- UI toolkit and the game's look: chunky outlined text, gradient buttons, gold-bannered windows, rarity unit cards,
@@ -6430,6 +6705,7 @@ local Units = require(Shared.Units)
 local Traits = require(Shared.Traits)
 local Rarities = require(Shared.Rarities)
 local Progression = require(Shared.Progression)
+local Skins = require(script.Parent.Skins)
 
 local Ui = {}
 
@@ -6757,6 +7033,7 @@ function Ui.viewport(key: string, props: { [string]: any }?, spin: boolean?): Vi
 	local vp = Ui.new("ViewportFrame", p)
 	local model = ModelFactory.build(key, 1, true)
 	model.Parent = vp
+	Skins.apply(model, true)
 	local cf, size = model:GetBoundingBox()
 	local dist = math.max(size.X * 0.9, size.Y, size.Z * 0.9) * 1.55 + 1
 	local center = cf.Position
@@ -6775,7 +7052,11 @@ end
 -- ============================================================ unit cards and stats
 
 function Ui.unitName(unitId: string): string
-	return ModelFactory.displayName(unitId, Units.ById[unitId].name)
+	return Skins.displayName(unitId) or ModelFactory.displayName(unitId, Units.ById[unitId].name)
+end
+
+function Ui.enemyName(enemyId: string, fallback: string): string
+	return Skins.displayName(enemyId) or ModelFactory.displayName(enemyId, fallback)
 end
 
 function Ui.gradeBadge(grade: string, props: { [string]: any }): TextLabel
@@ -7001,18 +7282,18 @@ return Ui
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="29">
+  <Item class="Workspace" referent="30">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="FilteringEnabled">true</bool>
       <bool name="NeedsPivotMigration">false</bool>
     </Properties>
-    <Item class="Model" referent="30">
+    <Item class="Model" referent="31">
       <Properties>
         <string name="Name">Lobby</string>
         <bool name="NeedsPivotMigration">false</bool>
       </Properties>
-      <Item class="Part" referent="31">
+      <Item class="Part" referent="32">
         <Properties>
           <string name="Name">Floor</string>
           <bool name="Anchored">true</bool>
@@ -7032,7 +7313,7 @@ return Ui
           <token name="TopSurface">0</token>
         </Properties>
       </Item>
-      <Item class="SpawnLocation" referent="32">
+      <Item class="SpawnLocation" referent="33">
         <Properties>
           <string name="Name">Spawn</string>
           <bool name="Anchored">true</bool>

@@ -958,6 +958,7 @@ function Battle:destroy()
 		self.arena:Destroy()
 		self.arena = nil
 	end
+	MapBuilder.clear(self.origin)
 	if self.player.Parent then
 		stateEvent:FireClient(self.player, { active = false })
 	end

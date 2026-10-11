@@ -449,12 +449,17 @@ end
 function ModelFactory.build(key: string, scale: number?, anchored: boolean?): Model
 	local custom = customModel(key)
 	if custom then
-		return buildCustom(custom, key, scale or 1, anchored)
+		local m = buildCustom(custom, key, scale or 1, anchored)
+		return m
 	end
 	local design = designs[key] or designs.grumble
 	local s = scale or 1
 	local model = Instance.new("Model")
 	model.Name = key
+	-- what the client's SM64 skins (src/client/Skins) look for
+	model:SetAttribute("SkinKey", key)
+	model:SetAttribute("SkinScale", s)
+	model:SetAttribute("SkinHeight", ModelFactory.height(key))
 
 	local root = Instance.new("Part")
 	root.Name = "Root"

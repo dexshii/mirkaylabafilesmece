@@ -227,10 +227,31 @@ local function buildDecor(lobby: Instance)
 	end
 end
 
+local function buildTerrain(lobby: Instance)
+	-- real terrain instead of the flat floor part: a grass meadow, hills around it and a pond
+	local terrain = workspace.Terrain
+	terrain:FillBlock(CFrame.new(0, -6, 0), Vector3.new(440, 12, 440), Enum.Material.Grass)
+	local rng = Random.new(11)
+	for i = 1, 18 do
+		local a = i / 18 * math.pi * 2 + rng:NextNumber(-0.15, 0.15)
+		local r = rng:NextNumber(150, 200)
+		terrain:FillBall(Vector3.new(math.cos(a) * r, -6, math.sin(a) * r), rng:NextNumber(26, 46), rng:NextNumber() < 0.8 and Enum.Material.LeafyGrass or Enum.Material.Rock)
+	end
+	terrain:FillCylinder(CFrame.new(78, -2, -70), 4, 18, Enum.Material.Air)
+	terrain:FillCylinder(CFrame.new(78, -3, -70), 2, 18, Enum.Material.Water)
+	terrain:FillCylinder(CFrame.new(-80, -2, 30), 4, 14, Enum.Material.Air)
+	terrain:FillCylinder(CFrame.new(-80, -3, 30), 2, 14, Enum.Material.Water)
+	local floor = lobby:FindFirstChild("Floor")
+	if floor then
+		floor:Destroy()
+	end
+end
+
 function Lobby.build()
 	local lobby = workspace:FindFirstChild("Lobby") or Instance.new("Model")
 	lobby.Name = "Lobby"
 	lobby.Parent = workspace
+	buildTerrain(lobby)
 	buildDecor(lobby)
 	buildCastle(lobby)
 	buildSummonHall(lobby)

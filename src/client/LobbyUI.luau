@@ -17,6 +17,7 @@ local ModelFactory = require(Shared.ModelFactory)
 
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
+local Skins = require(script.Parent.Skins)
 
 local LobbyUI = {}
 
@@ -77,7 +78,21 @@ local function mapUnlocked(data, index: number): boolean
 	return index == 1 or (data.progress[Maps.List[index - 1].id] or 0) >= Maps.Stages
 end
 
+local blur: BlurEffect? = nil
+local function setBlur(on: boolean)
+	local effect = blur
+	if not effect then
+		effect = Instance.new("BlurEffect")
+		effect.Name = "MenuBlur"
+		effect.Size = 0
+		effect.Parent = game:GetService("Lighting")
+		blur = effect
+	end
+	TweenService:Create(effect, TweenInfo.new(0.2), { Size = on and 14 or 0 }):Play()
+end
+
 local function open(name: string?)
+	setBlur(name ~= nil)
 	for n, w in windows do
 		if n == name then
 			if not w.Visible then
@@ -105,21 +120,22 @@ local crystalsLabel: TextLabel
 local unitsLabel: TextLabel
 local teamTray: Frame
 
-local function tile(parent: Instance, emoji: string, label: string, color: Color3, order: number, onClick: () -> ())
+local function tile(parent: Instance, emoji: string, label: string, color: Color3, order: number, key: string, onClick: () -> ())
 	local t = Ui.new("TextButton", {
 		Text = "",
 		AutoButtonColor = false,
-		Size = UDim2.fromOffset(112, 92),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		LayoutOrder = order,
 		Parent = parent,
-	}, { Ui.corner(16), Ui.stroke(C.ink, 3), Ui.gradient(Ui.lighten(color, 0.25), Ui.darken(color, 0.3)) })
-	Ui.new("Frame", { Size = UDim2.new(1, -8, 0.4, 0), Position = UDim2.fromOffset(4, 4), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.82, Parent = t }, { Ui.corner(12) })
-	Ui.text({ Text = emoji, Size = UDim2.new(1, 0, 0, 50), Position = UDim2.fromOffset(0, 4), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 44, Outline = 0, Parent = t })
-	Ui.title({ Text = label, Size = UDim2.new(1, -8, 0, 26), Position = UDim2.new(0, 4, 1, -30), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 22, Parent = t })
+	}, { Ui.corner(14), Ui.stroke(C.ink, 3), Ui.gradient(Ui.lighten(color, 0.2), Ui.darken(color, 0.35)) })
+	Ui.new("Frame", { Size = UDim2.new(1, -8, 0.42, 0), Position = UDim2.fromOffset(4, 4), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.85, Parent = t }, { Ui.corner(10) })
+	Ui.text({ Text = emoji, Size = UDim2.new(1, 0, 0, 46), Position = UDim2.fromOffset(0, 6), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 40, Outline = 0, Parent = t })
+	Ui.title({ Text = label, Size = UDim2.new(1, -6, 0, 22), Position = UDim2.new(0, 3, 1, -26), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 19, Parent = t })
+	local badge = Ui.new("Frame", { Size = UDim2.fromOffset(24, 24), Position = UDim2.fromOffset(-6, -6), BackgroundColor3 = Color3.fromRGB(30, 24, 50), ZIndex = 3, Parent = t }, { Ui.corner(6), Ui.stroke(C.ink, 2) })
+	Ui.text({ Text = key, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 15, ZIndex = 4, Parent = badge })
 	local scale = Ui.new("UIScale", { Parent = t })
 	t.MouseEnter:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Back), { Scale = 1.08 }):Play()
+		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Back), { Scale = 1.07 }):Play()
 	end)
 	t.MouseLeave:Connect(function()
 		TweenService:Create(scale, TweenInfo.new(0.12), { Scale = 1 }):Play()
@@ -127,23 +143,28 @@ local function tile(parent: Instance, emoji: string, label: string, color: Color
 	t.Activated:Connect(onClick)
 end
 
+local hotkeys: { [Enum.KeyCode]: string } = {}
+
 local function buildMenu()
 	local menu = Ui.new("Frame", {
-		Size = UDim2.fromOffset(112, 520),
+		Size = UDim2.fromOffset(206, 330),
 		Position = UDim2.new(0, 16, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BackgroundTransparency = 1,
 		Parent = gui,
-	}, { Ui.list(Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center) })
+	}, {
+		Ui.new("UIGridLayout", { CellSize = UDim2.fromOffset(98, 96), CellPadding = UDim2.fromOffset(10, 12), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
 	local items = {
-		{ "⚔️", "PLAY", C.green, "Play" },
-		{ "✨", "SUMMON", C.pink, "Summon" },
-		{ "🎒", "UNITS", C.blue, "Units" },
-		{ "🔮", "TRAITS", C.purple, "Traits" },
-		{ "🏆", "CHALLENGE", C.orange, "Challenges" },
+		{ "⚔️", "PLAY", C.green, "Play", "P", Enum.KeyCode.P },
+		{ "✨", "SUMMON", C.pink, "Summon", "J", Enum.KeyCode.J },
+		{ "🎒", "UNITS", C.blue, "Units", "H", Enum.KeyCode.H },
+		{ "🔮", "TRAITS", C.purple, "Traits", "T", Enum.KeyCode.T },
+		{ "🏆", "QUESTS", C.orange, "Challenges", "C", Enum.KeyCode.C },
 	}
 	for i, it in items do
-		tile(menu, it[1], it[2], it[3], i, function()
+		hotkeys[it[6]] = it[4]
+		tile(menu, it[1], it[2], it[3], i, it[5], function()
 			open(openName ~= it[4] and it[4] or nil)
 		end)
 	end
@@ -185,13 +206,14 @@ local function refreshTeamTray()
 		local uid = data.team[i]
 		local e = uid ~= "" and entryOf(data, uid)
 		if e then
-			Ui.unitCard(teamTray, { unitId = e.u, level = e.l, trait = e.t, price = Stats.placeCost(e.u, e.t) }, UDim2.fromOffset(92, 108), function()
+			local card = Ui.unitCard(teamTray, { unitId = e.u, level = e.l, trait = e.t, price = Stats.placeCost(e.u, e.t) }, UDim2.fromOffset(92, 108), function()
 				selectedUnit = e.uid
 				open("Units")
-			end).LayoutOrder = i
+			end)
+			card.LayoutOrder = i
 		else
 			local slot = Ui.new("TextButton", {
-				Text = "+",
+				Text = tostring(i),
 				Font = Ui.TitleFont,
 				TextScaled = true,
 				TextColor3 = C.muted,
@@ -291,7 +313,7 @@ local function buildPlay()
 		}, { Ui.corner(12), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(150, 40, 70), Color3.fromRGB(50, 10, 30)) })
 		Ui.viewport(def.boss, { Size = UDim2.new(1, 0, 1, -26) }, true).Parent = bossCard
 		Ui.chip("BOSS", C.red, { Size = UDim2.fromOffset(60, 20), Position = UDim2.new(0.5, -30, 0, -10), ZIndex = 3, Parent = bossCard })
-		Ui.text({ Text = ModelFactory.displayName(boss.id, boss.name), Size = UDim2.new(1, -8, 0, 20), Position = UDim2.new(0, 4, 1, -24), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 15, Parent = bossCard })
+		Ui.text({ Text = Ui.enemyName(boss.id, boss.name), Size = UDim2.new(1, -8, 0, 20), Position = UDim2.new(0, 4, 1, -24), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 15, Parent = bossCard })
 		Ui.text({
 			Text = boss.desc,
 			Size = UDim2.new(1, -140, 0, 40),
@@ -319,7 +341,7 @@ local function buildPlay()
 				Parent = row,
 			}, { Ui.corner(10), Ui.stroke(C.ink, 2), Ui.gradient(Color3.fromRGB(80, 66, 140), Color3.fromRGB(40, 30, 80)) })
 			Ui.viewport(id, { Size = UDim2.new(1, 0, 1, -22) }).Parent = holder
-			Ui.text({ Text = ModelFactory.displayName(id, e.name), Size = UDim2.new(1, -6, 0, 18), Position = UDim2.new(0, 3, 1, -20), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 13, Parent = holder })
+			Ui.text({ Text = Ui.enemyName(id, e.name), Size = UDim2.new(1, -6, 0, 18), Position = UDim2.new(0, 3, 1, -20), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 13, Parent = holder })
 			if e.kind == "flying" then
 				Ui.chip("AIR", C.blue, { Size = UDim2.fromOffset(40, 18), Position = UDim2.fromOffset(4, 4), ZIndex = 3, Parent = holder })
 			end
@@ -431,6 +453,7 @@ local function cinematic(unitId: string, rarity: string): () -> ()
 		local model = ModelFactory.build(unitId, 1.4, true)
 		model:PivotTo(CFrame.new(top) * CFrame.Angles(0, math.pi, 0))
 		model.Parent = folder
+		Skins.apply(model, true)
 		sparks.Rate = 15
 	end)
 	return function()
@@ -1033,6 +1056,16 @@ function LobbyUI.start()
 	refreshAll()
 
 	-- walking up to the Summon Hall pedestal or the battle portal opens their windows
+	game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
+		if processed or not gui.Enabled then
+			return
+		end
+		local target = hotkeys[input.KeyCode]
+		if target then
+			open(openName ~= target and target or nil)
+		end
+	end)
+
 	ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		local target = prompt:GetAttribute("OpensWindow")
 		if type(target) == "string" and windows[target] and gui.Enabled then

@@ -433,6 +433,20 @@ end
 
 -- ============================================================ build
 
+-- terrain materials per map: the field's surface, the cliffs under it, the lowland around it, and its lakes
+local TERRAIN = {
+	meadow = { field = Enum.Material.Grass, cliff = Enum.Material.Rock, world = Enum.Material.LeafyGrass, lake = Enum.Material.Water },
+	desert = { field = Enum.Material.Sand, cliff = Enum.Material.Sandstone, world = Enum.Material.Sand, lake = Enum.Material.Water },
+	frost = { field = Enum.Material.Snow, cliff = Enum.Material.Glacier, world = Enum.Material.Snow, lake = Enum.Material.Ice },
+	magma = { field = Enum.Material.Basalt, cliff = Enum.Material.Basalt, world = Enum.Material.Basalt, lake = Enum.Material.CrackedLava },
+	starcastle = { field = Enum.Material.Pavement, cliff = Enum.Material.Limestone, world = Enum.Material.Slate, lake = Enum.Material.Water },
+}
+
+-- removes a map's terrain
+function MapBuilder.clear(origin: Vector3)
+	workspace.Terrain:FillBlock(CFrame.new(origin + Vector3.new(0, 10, 0)), Vector3.new(1200, 120, 1200), Enum.Material.Air)
+end
+
 local function nearPath(waypoints: { { number } }, x: number, z: number, margin: number): boolean
 	for i = 1, #waypoints - 1 do
 		local a, b = waypoints[i], waypoints[i + 1]
@@ -455,38 +469,42 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 	arena.Name = "Arena_" .. def.id
 	local half = Maps.FieldHalf
 
-	-- the play field: tiles (the ground units are placed on) with a little colour variation
+	-- the play field and the world around it are Roblox Terrain; units are placed on an invisible "Ground" part
+	local terrain = workspace.Terrain
+	local look = TERRAIN[def.id]
+	-- the raised field: rock cliffs with the theme's material on top
+	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -10, 0)), Vector3.new(half * 2 + 8, 12, half * 2 + 8), look.cliff)
+	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -2, 0)), Vector3.new(half * 2 + 8, 4, half * 2 + 8), look.field)
+	-- the lowland around it, with hills and lakes
+	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -20, 0)), Vector3.new(1100, 12, 1100), look.world)
+	for _ = 1, 22 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(190, 480)
+		local size = rng:NextNumber(30, 70)
+		terrain:FillBall(origin + Vector3.new(math.cos(a) * r, -16, math.sin(a) * r), size, rng:NextNumber() < 0.7 and look.world or look.cliff)
+	end
+	for _ = 1, 3 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(170, 300)
+		local c = origin + Vector3.new(math.cos(a) * r, -16, math.sin(a) * r)
+		terrain:FillCylinder(CFrame.new(c), 4, rng:NextNumber(25, 45), look.lake)
+	end
 	local ground = Instance.new("Model")
 	ground.Name = "Ground"
 	ground.Parent = arena
-	local tile = 30
-	local n = math.floor(half * 2 / tile)
-	for i = 0, n - 1 do
-		for j = 0, n - 1 do
-			local x = -half + tile * (i + 0.5)
-			local z = -half + tile * (j + 0.5)
-			local c
-			if def.id == "starcastle" then
-				c = (i + j) % 2 == 0 and theme.ground or theme.grass2
-			else
-				c = theme.ground:Lerp(theme.grass2, ((i + j) % 2) * 0.5 + rng:NextNumber(0, 0.25))
-			end
-			part(ground, Vector3.new(tile, 4, tile), CFrame.new(origin + Vector3.new(x, -2, z)), c, { material = theme.groundMaterial, collide = true, query = true, shadow = false })
-		end
-	end
-	-- the field's edge and the cliff under it
+	local placeable = part(ground, Vector3.new(half * 2, 1, half * 2), CFrame.new(origin + Vector3.new(0, -0.5, 0)), theme.ground, { query = true })
+	placeable.Transparency = 1
+	placeable:SetAttribute("Placeable", true)
+	-- a low stone border around the field
 	for _, side in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
 		local along = side[1] == 0
 		local size = along and Vector3.new(half * 2 + 6, 1.2, 3) or Vector3.new(3, 1.2, half * 2 + 6)
 		part(arena, size, CFrame.new(origin + Vector3.new(side[1] * (half + 1.5), 0.6, side[2] * (half + 1.5))), theme.curb, { material = Enum.Material.Cobblestone, collide = true })
 	end
-	part(arena, Vector3.new(half * 2 + 6, 14, half * 2 + 6), CFrame.new(origin + Vector3.new(0, -11, 0)), shade(theme.ground, -0.45), { material = Enum.Material.Rock, collide = true })
 
-	-- the world around it
 	local world = Instance.new("Folder")
 	world.Name = "Scenery"
 	world.Parent = arena
-	part(world, Vector3.new(1100, 4, 1100), CFrame.new(origin + Vector3.new(0, -16, 0)), shade(theme.grass2, -0.15), { material = theme.groundMaterial, shadow = false, collide = true })
 	local makeScenery = scenery[def.id]
 	for i = 1, 26 do
 		local a = i / 26 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)

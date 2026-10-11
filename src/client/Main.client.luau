@@ -7,6 +7,7 @@ local Fx = require(script.Parent.Fx)
 local LobbyUI = require(script.Parent.LobbyUI)
 local BattleUI = require(script.Parent.BattleUI)
 local Ui = require(script.Parent.Ui)
+local Skins = require(script.Parent.Skins)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
@@ -14,6 +15,7 @@ end)
 
 Store.start()
 Fx.start()
+Skins.start()
 
 -- wait for the save data before building the lobby
 while not Store.data do

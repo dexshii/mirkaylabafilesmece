@@ -71,3 +71,18 @@ written as glTF and OBJ. Everything uses the Python standard library.
 
 To use a different SM64 actor for a unit, edit the `ACTORS` table at the top of `sm64_to_roblox.py`. Each entry is
 the actor's geo layout name from `actors/<name>/geo.inc.c`, the animation to pose it with, and the name to show.
+
+## No importing: build the meshes into the place
+
+With `--luau sm64_luau` the script also writes the models as data files that the game turns into meshes itself
+when it starts (EditableMesh). Nothing needs importing or uploading:
+
+```
+python sm64_to_roblox.py --rom "Super Mario 64 (USA).z64" --luau sm64_luau
+cd ../..
+rojo build sm64.project.json -o StarKingdomDefense_SM64.rbxlx
+```
+
+Open `StarKingdomDefense_SM64.rbxlx` and press Play. This works in Studio. In a published game, Roblox may only
+allow EditableMesh for ID-verified accounts. Both `sm64_luau` and the `_SM64` place file are git-ignored; don't
+share them.

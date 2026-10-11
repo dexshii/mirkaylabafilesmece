@@ -10,6 +10,7 @@ local Units = require(Shared.Units)
 local Traits = require(Shared.Traits)
 local Rarities = require(Shared.Rarities)
 local Progression = require(Shared.Progression)
+local Skins = require(script.Parent.Skins)
 
 local Ui = {}
 
@@ -337,6 +338,7 @@ function Ui.viewport(key: string, props: { [string]: any }?, spin: boolean?): Vi
 	local vp = Ui.new("ViewportFrame", p)
 	local model = ModelFactory.build(key, 1, true)
 	model.Parent = vp
+	Skins.apply(model, true)
 	local cf, size = model:GetBoundingBox()
 	local dist = math.max(size.X * 0.9, size.Y, size.Z * 0.9) * 1.55 + 1
 	local center = cf.Position
@@ -355,7 +357,11 @@ end
 -- ============================================================ unit cards and stats
 
 function Ui.unitName(unitId: string): string
-	return ModelFactory.displayName(unitId, Units.ById[unitId].name)
+	return Skins.displayName(unitId) or ModelFactory.displayName(unitId, Units.ById[unitId].name)
+end
+
+function Ui.enemyName(enemyId: string, fallback: string): string
+	return Skins.displayName(enemyId) or ModelFactory.displayName(enemyId, fallback)
 end
 
 function Ui.gradeBadge(grade: string, props: { [string]: any }): TextLabel
