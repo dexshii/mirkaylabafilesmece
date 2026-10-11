@@ -418,7 +418,7 @@ local list: { MapDef } = {
 			fog = Color3.fromRGB(40, 30, 80),
 		},
 		waypoints = { { 0, -115 }, { 0, -70 }, { -90, -70 }, { -90, 0 }, { 90, 0 }, { 90, 70 }, { 0, 70 }, { 0, 110 } },
-		ground = { "shellguard", "splitter", "sprinter" },
+		ground = { "grumble", "splitter", "shellguard" },
 		flying = { "phantom", "skyray" },
 		boss = "shadowmonarch",
 		hpMult = 3.6,
@@ -489,7 +489,9 @@ function Maps.buildWaves(def: MapDef, stage: number, modifiers: { [string]: any 
 			-- a mini-boss wave: a big push of the toughest regular enemy
 			add(groups, def.ground[3], 4 + stage, 0.8)
 		end
-		table.insert(waves, { groups = groups, hpMult = base * (1 + 0.12 * (w - 1)), bossMult = base })
+		-- every stage starts near base health and ramps to the map's full multiplier by its last wave
+		local ramp = w / count
+		table.insert(waves, { groups = groups, hpMult = (1 + 0.12 * (w - 1)) * (1 + (base - 1) * ramp), bossMult = base })
 	end
 	return waves
 end
