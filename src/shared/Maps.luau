@@ -155,6 +155,15 @@ local list: { MapDef } = {
 	},
 }
 
+-- the paths above were drawn for a 240-stud field; the field is now smaller and tighter
+local PATH_SCALE = 0.62
+for _, def in list do
+	for _, wp in def.waypoints do
+		wp[1] = math.floor(wp[1] * PATH_SCALE + 0.5)
+		wp[2] = math.floor(wp[2] * PATH_SCALE + 0.5)
+	end
+end
+
 Maps.List = list
 Maps.ById = {} :: { [string]: MapDef }
 Maps.Index = {} :: { [string]: number }
@@ -164,8 +173,8 @@ for i, def in list do
 end
 
 Maps.Stages = 5
-Maps.FieldHalf = 120
-Maps.PathWidth = 9
+Maps.FieldHalf = 76
+Maps.PathWidth = 8
 Maps.StartCash = 800
 Maps.StartCashPerMap = 250
 Maps.BaseHealth = 100

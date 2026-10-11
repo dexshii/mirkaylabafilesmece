@@ -68,17 +68,47 @@ local function build(key: string): MeshPart?
 	end
 	local pos = decode64(data.positions)
 	local uvs = decode64(data.uvs)
-	local mesh = AssetService:CreateEditableMesh({})
 	local count = buffer.len(pos) // 12
+	-- centre the mesh on its bounding box so the MeshPart's position is the mesh's centre
+	local minV, maxV = Vector3.one * math.huge, -Vector3.one * math.huge
+	local points = table.create(count)
+	for i = 0, count - 1 do
+		local p = Vector3.new(buffer.readf32(pos, i * 12), buffer.readf32(pos, i * 12 + 4), buffer.readf32(pos, i * 12 + 8))
+		points[i + 1] = p
+		minV = minV:Min(p)
+		maxV = maxV:Max(p)
+	end
+	local center = (minV + maxV) / 2
+	local mesh = AssetService:CreateEditableMesh({})
+	local ids: { [string]: number } = {}
+	local faces = 0
 	for t = 0, count // 3 - 1 do
-		local v, u = {}, {}
-		for k = 0, 2 do
-			local i = t * 3 + k
-			v[k + 1] = mesh:AddVertex(Vector3.new(buffer.readf32(pos, i * 12), buffer.readf32(pos, i * 12 + 4), buffer.readf32(pos, i * 12 + 8)))
-			u[k + 1] = mesh:AddUV(Vector2.new(buffer.readf32(uvs, i * 8), buffer.readf32(uvs, i * 8 + 4)))
+		local a, b, c = points[t * 3 + 1], points[t * 3 + 2], points[t * 3 + 3]
+		-- skip zero-area triangles: they make mesh creation fail
+		if (b - a):Cross(c - a).Magnitude > 1e-6 then
+			local v, u = {}, {}
+			for k = 0, 2 do
+				local i = t * 3 + k
+				local p = points[i + 1] - center
+				local vkey = string.format("%.4f,%.4f,%.4f", p.X, p.Y, p.Z)
+				local id = ids[vkey]
+				if not id then
+					id = mesh:AddVertex(p)
+					ids[vkey] = id
+				end
+				v[k + 1] = id
+				u[k + 1] = mesh:AddUV(Vector2.new(buffer.readf32(uvs, i * 8), buffer.readf32(uvs, i * 8 + 4)))
+			end
+			if v[1] ~= v[2] and v[2] ~= v[3] and v[1] ~= v[3] then
+				local face = mesh:AddTriangle(v[1], v[2], v[3])
+				mesh:SetFaceUVs(face, u)
+				faces += 1
+			end
 		end
-		local face = mesh:AddTriangle(v[1], v[2], v[3])
-		mesh:SetFaceUVs(face, u)
+	end
+	if faces == 0 then
+		warn("[SM64] " .. key .. " has no usable triangles")
+		return nil
 	end
 	local part = AssetService:CreateMeshPartAsync(Content.fromObject(mesh))
 	local image = AssetService:CreateEditableImage({ Size = Vector2.new(data.width, data.height) })
@@ -107,6 +137,8 @@ function Skins.template(key: string): MeshPart?
 	local ok, result = pcall(build, key)
 	if not ok then
 		warn("[SM64] could not build " .. key .. ": " .. tostring(result))
+	elseif result then
+		print("[SM64] built " .. key)
 	end
 	templates[key] = ok and result or false
 	building[key] = nil
@@ -149,12 +181,16 @@ function Skins.apply(model: Model, isLocal: boolean?)
 			part.Anchored = true
 		else
 			part.Anchored = false
-			local weld = Instance.new("WeldConstraint")
+			-- a Weld (not a WeldConstraint) so the animator can bob and lunge it through C0
+			local weld = Instance.new("Weld")
+			weld.Name = "SkinWeld"
 			weld.Part0 = root
 			weld.Part1 = part
+			weld.C0 = CFrame.new(0, part.Size.Y / 2, 0)
 			weld.Parent = part
 		end
 		part.Parent = model
+		model:SetAttribute("SkinReady", true)
 	end)
 end
 

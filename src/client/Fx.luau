@@ -4,6 +4,7 @@ local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
 
 local Net = require(game.ReplicatedStorage.Shared.Net)
+local Animator = require(script.Parent.Animator)
 
 local Fx = {}
 
@@ -227,6 +228,9 @@ function Fx.start()
 			handler(p)
 		end
 		chainArcs(p)
+		if p.tower then
+			Animator.attack(p.tower)
+		end
 		if p.dmg and p.to then
 			damageNumber(p.to, p.dmg, p.color or Color3.new(1, 1, 1))
 		end

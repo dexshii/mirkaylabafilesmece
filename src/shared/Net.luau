@@ -9,6 +9,7 @@ Net.Functions = {
 	"EquipUnit",
 	"RollTrait",
 	"ReleaseUnit",
+	"LockUnit",
 	"StartBattle",
 	"PlaceUnit",
 	"UpgradeTower",

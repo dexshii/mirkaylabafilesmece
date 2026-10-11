@@ -13,6 +13,7 @@ local Progression = require(Shared.Progression)
 local DataService = require(script.Parent.DataService)
 local Battle = require(script.Parent.Battle)
 local Lobby = require(script.Parent.Lobby)
+local MapBuilder = require(script.Parent.MapBuilder)
 
 Net.setup()
 Battle.init()
@@ -103,7 +104,13 @@ handle("Summon", function(player, count)
 		local uid = DataService.addUnit(data, def.id)
 		data.units[uid].g = Progression.rollGrades(rng)
 		-- fill an empty team slot with new units so a new player can play right away
-		local empty = table.find(data.team, "")
+		local empty = nil
+		for i, other in data.team do
+			if other == "" and Progression.slotUnlocked(data.level, i) then
+				empty = i
+				break
+			end
+		end
 		local alreadyOnTeam = false
 		for _, other in data.team do
 			if other ~= "" and data.units[other] and data.units[other].u == def.id then
@@ -127,6 +134,9 @@ handle("EquipUnit", function(player, slot, uid)
 	end
 	if type(uid) ~= "string" or (uid ~= "" and not data.units[uid]) then
 		return false, "Invalid unit"
+	end
+	if uid ~= "" and not Progression.slotUnlocked(data.level, slot) then
+		return false, "Team slot " .. slot .. " unlocks at player level " .. Progression.SlotUnlock[slot]
 	end
 	if uid ~= "" then
 		local unitId = data.units[uid].u
@@ -163,6 +173,16 @@ handle("RollTrait", function(player, uid)
 	return true, trait.id
 end)
 
+handle("LockUnit", function(player, uid)
+	local data = DataService.get(player)
+	if not data or type(uid) ~= "string" or not data.units[uid] then
+		return false, "Invalid unit"
+	end
+	data.units[uid].k = not data.units[uid].k or nil
+	DataService.changed(player)
+	return true, data.units[uid].k == true
+end)
+
 handle("ReleaseUnit", function(player, uid)
 	local data = DataService.get(player)
 	if not data or type(uid) ~= "string" or not data.units[uid] then
@@ -170,6 +190,9 @@ handle("ReleaseUnit", function(player, uid)
 	end
 	if DataService.unitCount(data) <= 1 then
 		return false, "You can't release your last unit"
+	end
+	if data.units[uid].k then
+		return false, "That unit is locked. Unlock it first"
 	end
 	local def = Units.ById[data.units[uid].u]
 	local gems = Rarities.Info[def.rarity].releaseGems
@@ -233,6 +256,16 @@ local function rewardsFor(data, battle, won: boolean)
 	local xp = math.max(0, battle.waveIndex - (won and 0 or 1)) * 12 * (won and 2 or 1)
 	result.xp = xp
 	result.levelUps = {}
+	-- the player's own XP
+	local playerXp = math.max(0, battle.waveIndex - (won and 0 or 1)) * 8 + (won and 40 or 0)
+	result.playerXp = playerXp
+	data.level = data.level or 1
+	data.xp = (data.xp or 0) + playerXp
+	while data.xp >= Progression.playerXpToNext(data.level) do
+		data.xp -= Progression.playerXpToNext(data.level)
+		data.level += 1
+		result.playerLevel = data.level
+	end
 	for _, member in battle.team do
 		local entry = data.units[member.uid]
 		if entry and xp > 0 then
@@ -251,9 +284,17 @@ local function endBattle(player: Player)
 		return
 	end
 	battles[player] = nil
-	slotsInUse[battle.slot] = nil
-	battle:destroy()
+	local ok, err = pcall(battle.destroy, battle)
+	if not ok then
+		warn("[StarKingdomDefense] cleaning up a battle failed: " .. tostring(err))
+	end
+	Net.ev("BattleState"):FireClient(player, { active = false })
 	teleport(player, Lobby.spawnCFrame())
+	-- the arena slot is free again once its terrain is gone
+	task.spawn(function()
+		MapBuilder.clear(battle.origin)
+		slotsInUse[battle.slot] = nil
+	end)
 end
 
 handle("StartBattle", function(player, kind, id, stage)
@@ -293,7 +334,7 @@ handle("StartBattle", function(player, kind, id, stage)
 	for i = 1, Units.TeamSize do
 		local uid = data.team[i]
 		local entry = uid ~= "" and data.units[uid]
-		if entry then
+		if entry and Progression.slotUnlocked(data.level, i) then
 			team[i] = { uid = uid, unitId = entry.u, trait = entry.t, level = entry.l or 1, grades = entry.g or Progression.DefaultGrades }
 			any = true
 		end
@@ -403,7 +444,7 @@ handle("LeaveBattle", function(player)
 		local battle = battles[player]
 		-- leaving mid-battle counts as a loss (no rewards beyond waves survived)
 		if battle.state ~= "won" and battle.state ~= "lost" then
-			battle:finish(false)
+			pcall(battle.finish, battle, false)
 		end
 		endBattle(player)
 	end
@@ -426,8 +467,11 @@ Players.PlayerRemoving:Connect(function(player)
 	local battle = battles[player]
 	if battle then
 		battles[player] = nil
-		slotsInUse[battle.slot] = nil
-		battle:destroy()
+		pcall(battle.destroy, battle)
+		task.spawn(function()
+			MapBuilder.clear(battle.origin)
+			slotsInUse[battle.slot] = nil
+		end)
 	end
 end)
 

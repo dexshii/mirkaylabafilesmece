@@ -12,8 +12,10 @@ local STORE_NAME = "StarKingdomDefense_v1"
 local AUTOSAVE_SECONDS = 120
 
 -- u: unit id, t: trait id, l: level, x: xp toward the next level, g: stat grades { d, s, r }
-export type UnitEntry = { u: string, t: string?, l: number?, x: number?, g: { [string]: string }? }
+export type UnitEntry = { u: string, t: string?, l: number?, x: number?, g: { [string]: string }?, k: boolean? }
 export type Data = {
+	level: number,
+	xp: number,
 	gems: number,
 	crystals: number,
 	units: { [string]: UnitEntry },
@@ -38,6 +40,8 @@ local changedCallback: ((Player, Data) -> ())? = nil
 local function defaultData(): Data
 	return {
 		gems = 500, -- enough for one 10x summon
+		level = 1,
+		xp = 0,
 		crystals = 3,
 		units = {
 			["1"] = { u = "mushling", l = 1, x = 0, g = { d = "A", s = "A", r = "A" } },

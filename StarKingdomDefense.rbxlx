@@ -450,6 +450,15 @@ local list: { MapDef } = {
 	},
 }
 
+-- the paths above were drawn for a 240-stud field; the field is now smaller and tighter
+local PATH_SCALE = 0.62
+for _, def in list do
+	for _, wp in def.waypoints do
+		wp[1] = math.floor(wp[1] * PATH_SCALE + 0.5)
+		wp[2] = math.floor(wp[2] * PATH_SCALE + 0.5)
+	end
+end
+
 Maps.List = list
 Maps.ById = {} :: { [string]: MapDef }
 Maps.Index = {} :: { [string]: number }
@@ -459,8 +468,8 @@ for i, def in list do
 end
 
 Maps.Stages = 5
-Maps.FieldHalf = 120
-Maps.PathWidth = 9
+Maps.FieldHalf = 76
+Maps.PathWidth = 8
 Maps.StartCash = 800
 Maps.StartCashPerMap = 250
 Maps.BaseHealth = 100
@@ -1066,6 +1075,7 @@ Net.Functions = {
 	"EquipUnit",
 	"RollTrait",
 	"ReleaseUnit",
+	"LockUnit",
 	"StartBattle",
 	"PlaceUnit",
 	"UpgradeTower",
@@ -1180,6 +1190,17 @@ function Progression.rollGrades(rng: Random): { d: string, s: string, r: string 
 end
 
 Progression.DefaultGrades = { d = "A", s = "A", r = "A" }
+
+-- the player's own level, from battle XP; team slots 4-6 unlock at these levels
+Progression.SlotUnlock = { 1, 1, 1, 5, 10, 15 }
+
+function Progression.playerXpToNext(level: number): number
+	return 150 + 50 * (level - 1)
+end
+
+function Progression.slotUnlocked(level: number?, slot: number): boolean
+	return (level or 1) >= (Progression.SlotUnlock[slot] or 1)
+end
 
 return Progression
 ]]></string>
@@ -2709,7 +2730,6 @@ function Battle:destroy()
 		self.arena:Destroy()
 		self.arena = nil
 	end
-	MapBuilder.clear(self.origin)
 	if self.player.Parent then
 		stateEvent:FireClient(self.player, { active = false })
 	end
@@ -2741,8 +2761,10 @@ local STORE_NAME = "StarKingdomDefense_v1"
 local AUTOSAVE_SECONDS = 120
 
 -- u: unit id, t: trait id, l: level, x: xp toward the next level, g: stat grades { d, s, r }
-export type UnitEntry = { u: string, t: string?, l: number?, x: number?, g: { [string]: string }? }
+export type UnitEntry = { u: string, t: string?, l: number?, x: number?, g: { [string]: string }?, k: boolean? }
 export type Data = {
+	level: number,
+	xp: number,
 	gems: number,
 	crystals: number,
 	units: { [string]: UnitEntry },
@@ -2767,6 +2789,8 @@ local changedCallback: ((Player, Data) -> ())? = nil
 local function defaultData(): Data
 	return {
 		gems = 500, -- enough for one 10x summon
+		level = 1,
+		xp = 0,
 		crystals = 3,
 		units = {
 			["1"] = { u = "mushling", l = 1, x = 0, g = { d = "A", s = "A", r = "A" } },
@@ -3217,6 +3241,7 @@ local Progression = require(Shared.Progression)
 local DataService = require(script.Parent.DataService)
 local Battle = require(script.Parent.Battle)
 local Lobby = require(script.Parent.Lobby)
+local MapBuilder = require(script.Parent.MapBuilder)
 
 Net.setup()
 Battle.init()
@@ -3307,7 +3332,13 @@ handle("Summon", function(player, count)
 		local uid = DataService.addUnit(data, def.id)
 		data.units[uid].g = Progression.rollGrades(rng)
 		-- fill an empty team slot with new units so a new player can play right away
-		local empty = table.find(data.team, "")
+		local empty = nil
+		for i, other in data.team do
+			if other == "" and Progression.slotUnlocked(data.level, i) then
+				empty = i
+				break
+			end
+		end
 		local alreadyOnTeam = false
 		for _, other in data.team do
 			if other ~= "" and data.units[other] and data.units[other].u == def.id then
@@ -3331,6 +3362,9 @@ handle("EquipUnit", function(player, slot, uid)
 	end
 	if type(uid) ~= "string" or (uid ~= "" and not data.units[uid]) then
 		return false, "Invalid unit"
+	end
+	if uid ~= "" and not Progression.slotUnlocked(data.level, slot) then
+		return false, "Team slot " .. slot .. " unlocks at player level " .. Progression.SlotUnlock[slot]
 	end
 	if uid ~= "" then
 		local unitId = data.units[uid].u
@@ -3367,6 +3401,16 @@ handle("RollTrait", function(player, uid)
 	return true, trait.id
 end)
 
+handle("LockUnit", function(player, uid)
+	local data = DataService.get(player)
+	if not data or type(uid) ~= "string" or not data.units[uid] then
+		return false, "Invalid unit"
+	end
+	data.units[uid].k = not data.units[uid].k or nil
+	DataService.changed(player)
+	return true, data.units[uid].k == true
+end)
+
 handle("ReleaseUnit", function(player, uid)
 	local data = DataService.get(player)
 	if not data or type(uid) ~= "string" or not data.units[uid] then
@@ -3374,6 +3418,9 @@ handle("ReleaseUnit", function(player, uid)
 	end
 	if DataService.unitCount(data) <= 1 then
 		return false, "You can't release your last unit"
+	end
+	if data.units[uid].k then
+		return false, "That unit is locked. Unlock it first"
 	end
 	local def = Units.ById[data.units[uid].u]
 	local gems = Rarities.Info[def.rarity].releaseGems
@@ -3437,6 +3484,16 @@ local function rewardsFor(data, battle, won: boolean)
 	local xp = math.max(0, battle.waveIndex - (won and 0 or 1)) * 12 * (won and 2 or 1)
 	result.xp = xp
 	result.levelUps = {}
+	-- the player's own XP
+	local playerXp = math.max(0, battle.waveIndex - (won and 0 or 1)) * 8 + (won and 40 or 0)
+	result.playerXp = playerXp
+	data.level = data.level or 1
+	data.xp = (data.xp or 0) + playerXp
+	while data.xp >= Progression.playerXpToNext(data.level) do
+		data.xp -= Progression.playerXpToNext(data.level)
+		data.level += 1
+		result.playerLevel = data.level
+	end
 	for _, member in battle.team do
 		local entry = data.units[member.uid]
 		if entry and xp > 0 then
@@ -3455,9 +3512,17 @@ local function endBattle(player: Player)
 		return
 	end
 	battles[player] = nil
-	slotsInUse[battle.slot] = nil
-	battle:destroy()
+	local ok, err = pcall(battle.destroy, battle)
+	if not ok then
+		warn("[StarKingdomDefense] cleaning up a battle failed: " .. tostring(err))
+	end
+	Net.ev("BattleState"):FireClient(player, { active = false })
 	teleport(player, Lobby.spawnCFrame())
+	-- the arena slot is free again once its terrain is gone
+	task.spawn(function()
+		MapBuilder.clear(battle.origin)
+		slotsInUse[battle.slot] = nil
+	end)
 end
 
 handle("StartBattle", function(player, kind, id, stage)
@@ -3497,7 +3562,7 @@ handle("StartBattle", function(player, kind, id, stage)
 	for i = 1, Units.TeamSize do
 		local uid = data.team[i]
 		local entry = uid ~= "" and data.units[uid]
-		if entry then
+		if entry and Progression.slotUnlocked(data.level, i) then
 			team[i] = { uid = uid, unitId = entry.u, trait = entry.t, level = entry.l or 1, grades = entry.g or Progression.DefaultGrades }
 			any = true
 		end
@@ -3607,7 +3672,7 @@ handle("LeaveBattle", function(player)
 		local battle = battles[player]
 		-- leaving mid-battle counts as a loss (no rewards beyond waves survived)
 		if battle.state ~= "won" and battle.state ~= "lost" then
-			battle:finish(false)
+			pcall(battle.finish, battle, false)
 		end
 		endBattle(player)
 	end
@@ -3630,8 +3695,11 @@ Players.PlayerRemoving:Connect(function(player)
 	local battle = battles[player]
 	if battle then
 		battles[player] = nil
-		slotsInUse[battle.slot] = nil
-		battle:destroy()
+		pcall(battle.destroy, battle)
+		task.spawn(function()
+			MapBuilder.clear(battle.origin)
+			slotsInUse[battle.slot] = nil
+		end)
 	end
 end)
 
@@ -4086,8 +4154,16 @@ local TERRAIN = {
 }
 
 -- removes a map's terrain
+-- in chunks (one huge region at once can fail); yields
 function MapBuilder.clear(origin: Vector3)
-	workspace.Terrain:FillBlock(CFrame.new(origin + Vector3.new(0, 10, 0)), Vector3.new(1200, 120, 1200), Enum.Material.Air)
+	for x = -500, 375, 125 do
+		for z = -500, 375, 125 do
+			pcall(function()
+				workspace.Terrain:FillBlock(CFrame.new(origin + Vector3.new(x + 62.5, 20, z + 62.5)), Vector3.new(128, 100, 128), Enum.Material.Air)
+			end)
+		end
+		task.wait()
+	end
 end
 
 local function nearPath(waypoints: { { number } }, x: number, z: number, margin: number): boolean
@@ -4122,13 +4198,13 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -20, 0)), Vector3.new(1100, 12, 1100), look.world)
 	for _ = 1, 22 do
 		local a = rng:NextNumber(0, math.pi * 2)
-		local r = rng:NextNumber(190, 480)
+		local r = rng:NextNumber(130, 420)
 		local size = rng:NextNumber(30, 70)
 		terrain:FillBall(origin + Vector3.new(math.cos(a) * r, -16, math.sin(a) * r), size, rng:NextNumber() < 0.7 and look.world or look.cliff)
 	end
 	for _ = 1, 3 do
 		local a = rng:NextNumber(0, math.pi * 2)
-		local r = rng:NextNumber(170, 300)
+		local r = rng:NextNumber(110, 260)
 		local c = origin + Vector3.new(math.cos(a) * r, -16, math.sin(a) * r)
 		terrain:FillCylinder(CFrame.new(c), 4, rng:NextNumber(25, 45), look.lake)
 	end
@@ -4151,7 +4227,7 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 	local makeScenery = scenery[def.id]
 	for i = 1, 26 do
 		local a = i / 26 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
-		local r = rng:NextNumber(200, 420)
+		local r = rng:NextNumber(130, 380)
 		makeScenery(world, origin + Vector3.new(math.cos(a) * r, -14, math.sin(a) * r), rng:NextNumber(0.8, 1.4), rng)
 	end
 	if def.id == "meadow" or def.id == "desert" or def.id == "frost" then
@@ -4209,11 +4285,11 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 		total += c[2]
 	end
 	local placed, tries = 0, 0
-	while placed < 60 and tries < 900 do
+	while placed < 34 and tries < 900 do
 		tries += 1
 		local x = rng:NextNumber(-half + 5, half - 5)
 		local z = rng:NextNumber(-half + 5, half - 5)
-		local edge = math.max(math.abs(x), math.abs(z)) > half - 26
+		local edge = math.max(math.abs(x), math.abs(z)) > half - 18
 		if not nearPath(def.waypoints, x, z, edge and 12 or 22) and (edge or rng:NextNumber() < 0.25) then
 			local roll = rng:NextNumber() * total
 			for _, c in choices do
@@ -4257,6 +4333,112 @@ return MapBuilder
           <string name="Name">Client</string>
         </Properties>
         <Item class="ModuleScript" referent="23">
+          <Properties>
+            <string name="Name">Animator</string>
+            <string name="Source"><![CDATA[-- Brings the SM64 models to life on this client: units and statues breathe and sway, enemies hop and waddle along
+-- the path (bosses stomp slower and heavier), and a unit lunges at its target each time it attacks. It moves the
+-- skin's Weld (see Skins), so the server's models and hitboxes are untouched.
+local RunService = game:GetService("RunService")
+
+local Animator = {}
+
+type Entry = { weld: Weld, base: CFrame, height: number, phase: number, kind: string, lunge: number }
+
+local tracked: { [Model]: Entry } = {}
+
+local function kindOf(model: Model): string
+	local parent = model.Parent
+	if parent and parent.Name == "Enemies" then
+		local scale = model:GetAttribute("SkinScale")
+		return (type(scale) == "number" and scale >= 2) and "boss" or "enemy"
+	end
+	return "unit"
+end
+
+local function track(model: Model)
+	if tracked[model] then
+		return
+	end
+	local part = model:FindFirstChild("SM64")
+	local weld = part and part:FindFirstChild("SkinWeld")
+	if not weld or not weld:IsA("Weld") then
+		return
+	end
+	tracked[model] = {
+		weld = weld,
+		base = weld.C0,
+		height = (part :: BasePart).Size.Y,
+		phase = math.random() * 10,
+		kind = kindOf(model),
+		lunge = 0,
+	}
+end
+
+-- a quick lunge toward the target for the unit with this tower id
+function Animator.attack(towerId: number)
+	for model, e in tracked do
+		if e.kind == "unit" and model:GetAttribute("TowerId") == towerId then
+			e.lunge = 1
+			return
+		end
+	end
+end
+
+function Animator.start()
+	workspace.DescendantAdded:Connect(function(inst)
+		if inst:IsA("Model") then
+			-- skins are added a moment after the model appears
+			task.delay(0.1, function()
+				if inst:GetAttribute("SkinReady") then
+					track(inst)
+				end
+			end)
+			inst:GetAttributeChangedSignal("SkinReady"):Connect(function()
+				track(inst)
+			end)
+		end
+	end)
+	for _, d in workspace:GetDescendants() do
+		if d:IsA("Model") and d:GetAttribute("SkinReady") then
+			track(d)
+		end
+	end
+
+	RunService.RenderStepped:Connect(function(dt)
+		local t = os.clock()
+		for model, e in tracked do
+			if not model.Parent or not e.weld.Parent then
+				tracked[model] = nil
+				continue
+			end
+			local h = e.height
+			local p = t + e.phase
+			local cf
+			if e.kind == "enemy" then
+				local hop = math.abs(math.sin(p * 9)) * 0.12 * h
+				cf = CFrame.new(0, hop, 0) * CFrame.Angles(0, 0, math.sin(p * 9) * 0.14)
+			elseif e.kind == "boss" then
+				local stomp = math.abs(math.sin(p * 4)) * 0.05 * h
+				cf = CFrame.new(0, stomp, 0) * CFrame.Angles(0, 0, math.sin(p * 4) * 0.07)
+			else
+				local breathe = math.sin(p * 2.2) * 0.03 * h
+				cf = CFrame.new(0, breathe, 0) * CFrame.Angles(0, math.sin(p * 1.1) * 0.08, 0)
+				if e.lunge > 0 then
+					e.lunge = math.max(0, e.lunge - dt * 5)
+					local k = math.sin(e.lunge * math.pi)
+					cf = cf * CFrame.new(0, k * 0.12 * h, -k * 0.35 * h) * CFrame.Angles(-k * 0.35, 0, 0)
+				end
+			end
+			e.weld.C0 = e.base * cf
+		end
+	end)
+end
+
+return Animator
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="24">
           <Properties>
             <string name="Name">BattleUI</string>
             <string name="Source"><![CDATA[-- The battle HUD: boss bar, wave counter and countdown ring, castle health, cash, the unit hotbar, placing units,
@@ -5078,7 +5260,7 @@ return BattleUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="24">
+        <Item class="ModuleScript" referent="25">
           <Properties>
             <string name="Name">Fx</string>
             <string name="Source"><![CDATA[-- Attack and ability effects, drawn only on this client from the server's Fx events.
@@ -5087,6 +5269,7 @@ local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
 
 local Net = require(game.ReplicatedStorage.Shared.Net)
+local Animator = require(script.Parent.Animator)
 
 local Fx = {}
 
@@ -5310,6 +5493,9 @@ function Fx.start()
 			handler(p)
 		end
 		chainArcs(p)
+		if p.tower then
+			Animator.attack(p.tower)
+		end
 		if p.dmg and p.to then
 			damageNumber(p.to, p.dmg, p.color or Color3.new(1, 1, 1))
 		end
@@ -5320,7 +5506,7 @@ return Fx
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="25">
+        <Item class="ModuleScript" referent="26">
           <Properties>
             <string name="Name">LobbyUI</string>
             <string name="Source"><![CDATA[-- Lobby screens: menu tiles, currencies, the team tray and the Play / Summon / Units / Traits / Challenges windows,
@@ -5524,13 +5710,17 @@ local function buildTopBar()
 	unitsLabel = pill(bar, "🎒", C.blue, 170, 3)
 end
 
+local levelLabel: TextLabel
+local levelFill: Frame
+
 local function refreshTeamTray()
 	local data = Store.data
 	Ui.clear(teamTray)
 	for i = 1, Units.TeamSize do
 		local uid = data.team[i]
 		local e = uid ~= "" and entryOf(data, uid)
-		if e then
+		local unlocked = Progression.slotUnlocked(data.level, i)
+		if e and unlocked then
 			local card = Ui.unitCard(teamTray, { unitId = e.u, level = e.l, trait = e.t, price = Stats.placeCost(e.u, e.t) }, UDim2.fromOffset(92, 108), function()
 				selectedUnit = e.uid
 				open("Units")
@@ -5538,27 +5728,37 @@ local function refreshTeamTray()
 			card.LayoutOrder = i
 		else
 			local slot = Ui.new("TextButton", {
-				Text = tostring(i),
-				Font = Ui.TitleFont,
-				TextScaled = true,
-				TextColor3 = C.muted,
+				Text = "",
 				Size = UDim2.fromOffset(92, 108),
-				BackgroundColor3 = C.panelDark,
-				BackgroundTransparency = 0.25,
+				BackgroundColor3 = Color3.fromRGB(26, 20, 44),
+				BackgroundTransparency = 0.15,
 				LayoutOrder = i,
 				Parent = teamTray,
-			}, { Ui.corner(12), Ui.stroke(Color3.fromRGB(90, 76, 160), 3), Ui.padding(28) })
+			}, { Ui.corner(12), Ui.stroke(Color3.fromRGB(70, 60, 120), 2) })
+			Ui.text({ Text = tostring(i), Size = UDim2.fromOffset(20, 18), Position = UDim2.new(1, -24, 0, 4), MaxText = 16, Parent = slot })
+			if not unlocked then
+				Ui.text({ Text = "🔒", Size = UDim2.new(1, 0, 0, 34), Position = UDim2.fromOffset(0, 26), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 28, Outline = 0, Parent = slot })
+				Ui.text({ Text = "Level " .. Progression.SlotUnlock[i], Size = UDim2.new(1, 0, 0, 22), Position = UDim2.fromOffset(0, 66), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 18, Parent = slot })
+			end
 			slot.Activated:Connect(function()
-				open("Units")
+				if unlocked then
+					open("Units")
+				else
+					Ui.toast("Slot " .. i .. " unlocks at player level " .. Progression.SlotUnlock[i], C.red)
+				end
 			end)
 		end
 	end
+	local level = data.level or 1
+	local need = Progression.playerXpToNext(level)
+	levelLabel.Text = string.format("Lvl %d (%d/%d XP)", level, data.xp or 0, need)
+	levelFill.Size = UDim2.fromScale(math.clamp((data.xp or 0) / need, 0, 1), 1)
 end
 
 local function buildTeamTray()
 	local tray = Ui.new("Frame", {
 		Size = UDim2.fromOffset(6 * 98 + 24, 132),
-		Position = UDim2.new(0.5, 0, 1, -10),
+		Position = UDim2.new(0.5, 0, 1, -40),
 		AnchorPoint = Vector2.new(0.5, 1),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		Parent = gui,
@@ -5570,6 +5770,10 @@ local function buildTeamTray()
 		BackgroundTransparency = 1,
 		Parent = tray,
 	}, { Ui.list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center) })
+	-- the player's level bar under the team
+	local bar, fill = Ui.bar(gui, { Size = UDim2.fromOffset(620, 14), Position = UDim2.new(0.5, 0, 1, -4), AnchorPoint = Vector2.new(0.5, 1) }, C.gold, 0)
+	levelFill = fill
+	levelLabel = Ui.title({ Text = "", Size = UDim2.fromOffset(300, 20), Position = UDim2.new(0.5, 0, 0, -22), AnchorPoint = Vector2.new(0.5, 0), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 18, Parent = bar })
 end
 
 -- ============================================================ Play
@@ -5938,56 +6142,102 @@ end
 
 -- ============================================================ Units
 
+local unitSearch = ""
+local unitFilter = "All"
+local FILTERS = { "All", "Mythic", "Legendary", "Rare", "Common", "Team", "Locked" }
+
+-- a square icon button for the column beside the unit details
+local function iconButton(parent: Instance, icon: string, color: Color3, order: number, onClick: () -> ())
+	local b = Ui.button(icon, color, onClick, { Size = UDim2.fromOffset(52, 52), LayoutOrder = order, MaxText = 26, Parent = parent })
+	b.TextColor3 = Color3.new(1, 1, 1)
+	return b
+end
+
 local function buildUnits()
-	local window, content = Ui.window(gui, "Units", "🎒", UDim2.fromOffset(1000, 580), closeButton)
+	local window, content = Ui.window(gui, "Units", "⭐", UDim2.fromOffset(1120, 640), closeButton)
 	windows.Units = window
+
+	-- top row: search and filter
+	local search = Ui.new("TextBox", {
+		Size = UDim2.new(0, 560, 0, 40),
+		Position = UDim2.fromOffset(330, -2),
+		BackgroundColor3 = Color3.fromRGB(14, 10, 26),
+		PlaceholderText = "Search...",
+		PlaceholderColor3 = C.muted,
+		Text = "",
+		Font = Ui.Font,
+		TextSize = 20,
+		TextColor3 = C.text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ClearTextOnFocus = false,
+		Parent = window,
+	}, { Ui.corner(10), Ui.stroke(Color3.fromRGB(70, 56, 130), 2), Ui.padding(10) })
+	local filterButton
+	filterButton = Ui.button("☰  Filters: All", C.panel, function()
+		unitFilter = FILTERS[(table.find(FILTERS, unitFilter) or 1) % #FILTERS + 1]
+		filterButton.Text = "☰  Filters: " .. unitFilter
+		refreshers.Units()
+	end, { Size = UDim2.fromOffset(160, 40), Position = UDim2.new(1, -230, 0, -2), MaxText = 18, Parent = window })
+	search:GetPropertyChangedSignal("Text"):Connect(function()
+		unitSearch = search.Text:lower()
+		refreshers.Units()
+	end)
+
 	local grid = Ui.new("ScrollingFrame", {
-		Size = UDim2.new(1, -380, 1, -64),
-		BackgroundTransparency = 1,
+		Size = UDim2.new(0, 620, 1, -110),
+		Position = UDim2.fromOffset(0, 46),
+		BackgroundColor3 = Color3.fromRGB(14, 10, 26),
+		BackgroundTransparency = 0.3,
 		ScrollBarThickness = 6,
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		Parent = content,
 	}, {
-		Ui.new("UIGridLayout", { CellSize = UDim2.fromOffset(110, 128), CellPadding = UDim2.fromOffset(10, 16), SortOrder = Enum.SortOrder.LayoutOrder }),
+		Ui.corner(12),
+		Ui.new("UIGridLayout", { CellSize = UDim2.fromOffset(112, 130), CellPadding = UDim2.fromOffset(8, 14), SortOrder = Enum.SortOrder.LayoutOrder }),
 		Ui.padding(10),
 	})
-	local footer = Ui.new("Frame", { Size = UDim2.new(1, -380, 0, 52), Position = UDim2.new(0, 0, 1, -52), BackgroundTransparency = 1, Parent = content }, { Ui.list(Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center) })
-	local detail = Ui.inset(content, { Size = UDim2.new(0, 364, 1, 0), Position = UDim2.new(1, -364, 0, 0) })
-	Ui.padding(12).Parent = detail
+	local countChip = Ui.chip("0/150", C.panel, { Size = UDim2.fromOffset(110, 30), Position = UDim2.new(0, 10, 1, -100), ZIndex = 5, Parent = content })
 
-	Ui.button("Unequip All", C.red, function()
-		for i = 1, Units.TeamSize do
-			if Store.data.team[i] ~= "" then
-				Store.call("EquipUnit", i, "")
-			end
-		end
-	end, { Size = UDim2.fromOffset(170, 48), Parent = footer })
-	Ui.button("Equip Best", C.purple, function()
-		-- the strongest unit of each type, best rarity first
-		local picked, used = {}, {}
-		for _, e in entries(Store.data) do
-			if not used[e.u] and #picked < Units.TeamSize then
-				used[e.u] = true
-				table.insert(picked, e.uid)
-			end
-		end
-		for i = 1, Units.TeamSize do
-			Store.call("EquipUnit", i, picked[i] or "")
-		end
-	end, { Size = UDim2.fromOffset(170, 48), Parent = footer })
-	local countLabel = Ui.title({ Text = "", Size = UDim2.fromOffset(200, 36), MaxText = 26, Parent = footer })
+	-- right: the selected unit
+	local detail = Ui.new("Frame", {
+		Size = UDim2.new(1, -700, 1, -110),
+		Position = UDim2.fromOffset(632, 46),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		Parent = content,
+	}, { Ui.corner(14), Ui.stroke(Color3.fromRGB(90, 200, 120), 3), Ui.padding(12) })
+	local detailGradient = Ui.gradient(Color3.fromRGB(40, 110, 70), Color3.fromRGB(14, 40, 26))
+	detailGradient.Parent = detail
+	local icons = Ui.new("Frame", { Size = UDim2.new(0, 56, 1, -110), Position = UDim2.new(1, -56, 0, 46), BackgroundTransparency = 1, Parent = content }, { Ui.list(Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Center) })
+
+	-- bottom buttons, as in the reference: Unequip All / Teams / Quick Sell / Equip
+	local bottom = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 52), Position = UDim2.new(0, 0, 1, -52), BackgroundTransparency = 1, Parent = content }, {
+		Ui.list(Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center),
+	})
 
 	refreshers.Units = function()
 		local data = Store.data
-		local list = entries(data)
+		local all = entries(data)
+		local list = {}
+		for _, e in all do
+			local def = Units.ById[e.u]
+			local name = Ui.unitName(e.u):lower()
+			local okSearch = unitSearch == "" or name:find(unitSearch, 1, true) ~= nil
+			local okFilter = unitFilter == "All"
+				or def.rarity == unitFilter
+				or (unitFilter == "Team" and onTeam(data, e.uid) ~= nil)
+				or (unitFilter == "Locked" and data.units[e.uid].k)
+			if okSearch and okFilter then
+				table.insert(list, e)
+			end
+		end
 		if selectedUnit and not data.units[selectedUnit] then
 			selectedUnit = nil
 		end
-		if not selectedUnit and list[1] then
-			selectedUnit = list[1].uid
+		if not selectedUnit and all[1] then
+			selectedUnit = all[1].uid
 		end
-		countLabel.Text = #list .. " / " .. Units.InventoryLimit
+		countChip:FindFirstChildWhichIsA("TextLabel").Text = #all .. "/" .. Units.InventoryLimit
 		Ui.clear(grid)
 		for i, e in list do
 			local slot = onTeam(data, e.uid)
@@ -6004,101 +6254,57 @@ local function buildUnits()
 				refreshers.Units()
 			end)
 			card.LayoutOrder = i
+			if data.units[e.uid].k then
+				Ui.text({ Text = "🔒", Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, -24, 0, 26), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 16, Outline = 0, ZIndex = 6, Parent = card })
+			end
 		end
 
 		Ui.clear(detail)
+		Ui.clear(icons)
+		Ui.clear(bottom)
 		local e = selectedUnit and entryOf(data, selectedUnit)
-		if not e then
-			return
-		end
-		local def = Units.ById[e.u]
-		Ui.chip(def.rarity, rarityColor(def.rarity), { Size = UDim2.fromOffset(120, 26), Parent = detail })
-		Ui.chip(def.role, C.panel, { Size = UDim2.fromOffset(200, 26), Position = UDim2.fromOffset(128, 0), Parent = detail })
-		Ui.title({ Text = Ui.unitName(e.u), Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 32), MaxText = 32, Parent = detail })
-		local stage = Ui.new("Frame", {
-			Size = UDim2.new(1, 0, 0, 170),
-			Position = UDim2.fromOffset(0, 72),
-			BackgroundColor3 = Color3.new(1, 1, 1),
-			Parent = detail,
-		}, { Ui.corner(12), Ui.stroke(C.ink, 2), Ui.gradient(Ui.darken(rarityColor(def.rarity), 0.2), Ui.darken(rarityColor(def.rarity), 0.75)) })
-		Ui.viewport(e.u, { Size = UDim2.fromScale(1, 1) }, true).Parent = stage
+		local def = e and Units.ById[e.u]
+		local slot = e and onTeam(data, e.uid)
 
-		-- level and xp
-		local maxed = e.l >= Progression.MaxLevel
-		Ui.title({ Text = "Lvl " .. e.l, Size = UDim2.fromOffset(90, 26), Position = UDim2.fromOffset(0, 250), MaxText = 22, Parent = detail })
-		Ui.bar(detail, { Size = UDim2.new(1, -96, 0, 16), Position = UDim2.fromOffset(96, 256) }, C.gold, maxed and 1 or e.x / Progression.xpToNext(e.l))
-		Ui.text({ Text = maxed and "MAX" or (e.x .. " / " .. Progression.xpToNext(e.l) .. " XP"), Size = UDim2.new(1, -96, 0, 14), Position = UDim2.fromOffset(96, 274), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = C.muted, MaxText = 12, Parent = detail })
-
-		local s = Stats.compute(e.u, 0, e.t, nil, { l = e.l, g = e.g })
-		local statRow = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 46), Position = UDim2.fromOffset(0, 296), BackgroundTransparency = 1, Parent = detail }, { Ui.list(Enum.FillDirection.Horizontal, 6) })
-		if def.attack.kind ~= "none" then
-			Ui.statChip("DMG", Ui.short(s.damage), e.g.d, C.red, { Size = UDim2.fromOffset(110, 46), Parent = statRow })
-			Ui.statChip("SPA", string.format("%.2fs", s.cooldown), e.g.s, C.blue, { Size = UDim2.fromOffset(110, 46), Parent = statRow })
-			Ui.statChip("RNG", string.format("%.1f", s.range), e.g.r, C.gold, { Size = UDim2.fromOffset(110, 46), Parent = statRow })
-		else
-			Ui.statChip("FARM", "$" .. math.floor(s.farm) .. "/wave", nil, C.gold, { Size = UDim2.fromOffset(200, 46), Parent = statRow })
-		end
-		local targets = (s.hitsGround and "Ground" or "") .. (s.hitsGround and s.hitsAir and " + " or "") .. (s.hitsAir and "Air" or "")
-		Ui.text({
-			Text = string.format("$%d to place  •  limit %d%s", Stats.placeCost(e.u, e.t), def.limit, targets ~= "" and ("  •  hits " .. targets) or ""),
-			Size = UDim2.new(1, 0, 0, 18),
-			Position = UDim2.fromOffset(0, 348),
-			TextColor3 = C.muted,
-			MaxText = 14,
-			Parent = detail,
-		})
-		local trait = e.t and Traits.ById[e.t]
-		local traitBox = Ui.new("Frame", {
-			Size = UDim2.new(1, 0, 0, 46),
-			Position = UDim2.fromOffset(0, 372),
-			BackgroundColor3 = Color3.new(1, 1, 1),
-			Parent = detail,
-		}, { Ui.corner(10), Ui.stroke(C.ink, 2), Ui.gradient(trait and Ui.darken(rarityColor(trait.rarity), 0.3) or C.panel, trait and Ui.darken(rarityColor(trait.rarity), 0.7) or C.panelDark) })
-		Ui.text({ Text = trait and ("🔮 " .. trait.name) or "🔮 No trait", Size = UDim2.new(1, -12, 0, 20), Position = UDim2.fromOffset(8, 3), MaxText = 17, Parent = traitBox })
-		Ui.text({ Text = trait and trait.desc or "Roll one in Traits with Trait Crystals", Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(8, 25), TextColor3 = C.muted, MaxText = 13, Outline = 1, Parent = traitBox })
-
-		local buttons = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 104), Position = UDim2.new(0, 0, 1, -104), BackgroundTransparency = 1, Parent = detail })
-		if equipMode then
-			Ui.title({ Text = "PICK A TEAM SLOT", Size = UDim2.new(1, 0, 0, 22), MaxText = 18, Parent = buttons })
+		-- bottom buttons
+		Ui.button("Unequip All", C.red, function()
 			for i = 1, Units.TeamSize do
-				local current = data.team[i]
-				Ui.button(tostring(i), current == selectedUnit and C.green or (current ~= "" and C.blue or C.panel), function()
-					local ok, err = Store.call("EquipUnit", i, selectedUnit)
-					if not ok then
-						Ui.toast(err or "Could not equip", C.red)
-					end
-					equipMode = false
-					refreshers.Units()
-				end, { Size = UDim2.fromOffset(52, 52), Position = UDim2.fromOffset((i - 1) * 57, 34), MaxText = 24, Parent = buttons })
+				if Store.data.team[i] ~= "" then
+					Store.call("EquipUnit", i, "")
+				end
 			end
-			return
-		end
-		local slot = onTeam(data, e.uid)
-		if slot then
-			Ui.button("Unequip", C.red, function()
-				Store.call("EquipUnit", slot, "")
-			end, { Size = UDim2.new(0.5, -5, 0, 48), Parent = buttons })
-		else
-			Ui.button("Equip", C.green, function()
-				equipMode = true
-				refreshers.Units()
-			end, { Size = UDim2.new(0.5, -5, 0, 48), Parent = buttons })
-		end
-		Ui.button("Traits", C.purple, function()
-			traitUnit = e.uid
-			open("Traits")
-		end, { Size = UDim2.new(0.5, -5, 0, 48), Position = UDim2.new(0.5, 5, 0, 0), Parent = buttons })
-		local releaseGems = Rarities.Info[def.rarity].releaseGems
+		end, { Size = UDim2.fromOffset(240, 50), MaxText = 22, Parent = bottom })
+		Ui.button("Teams", C.purple, function()
+			-- best unit of each type, best rarity first, into the unlocked slots
+			local picked, used = {}, {}
+			for _, x in entries(Store.data) do
+				if not used[x.u] and #picked < Units.TeamSize then
+					used[x.u] = true
+					table.insert(picked, x.uid)
+				end
+			end
+			local n = 1
+			for i = 1, Units.TeamSize do
+				if Progression.slotUnlocked(Store.data.level, i) then
+					Store.call("EquipUnit", i, picked[n] or "")
+					n += 1
+				end
+			end
+		end, { Size = UDim2.fromOffset(240, 50), MaxText = 22, Parent = bottom })
+		local releaseGems = def and Rarities.Info[def.rarity].releaseGems or 0
 		local confirming = false
-		local release
-		release = Ui.button("Quick Sell  +💎" .. releaseGems, C.gold, function()
+		local sell
+		sell = Ui.button("Quick Sell", C.gold, function()
+			if not e then
+				return
+			end
 			if not confirming then
 				confirming = true
-				release.Text = "Tap again to sell"
+				sell.Text = "Sell for 💎" .. releaseGems .. "?"
 				task.delay(3, function()
 					confirming = false
-					if release.Parent then
-						release.Text = "Quick Sell  +💎" .. releaseGems
+					if sell.Parent then
+						sell.Text = "Quick Sell"
 					end
 				end)
 				return
@@ -6109,7 +6315,111 @@ local function buildUnits()
 			else
 				Ui.toast(err or "Could not sell", C.red)
 			end
-		end, { Size = UDim2.new(1, 0, 0, 46), Position = UDim2.fromOffset(0, 56), Parent = buttons })
+		end, { Size = UDim2.fromOffset(240, 50), MaxText = 22, Parent = bottom })
+		Ui.button(slot and "Unequip" or "Equip", slot and C.red or C.green, function()
+			if not e then
+				return
+			end
+			if slot then
+				Store.call("EquipUnit", slot, "")
+			else
+				equipMode = not equipMode
+				refreshers.Units()
+			end
+		end, { Size = UDim2.new(1, -760, 0, 50), MaxText = 24, Parent = bottom })
+
+		if not e or not def then
+			return
+		end
+		local color = rarityColor(def.rarity)
+		detailGradient.Color = ColorSequence.new(Ui.darken(color, 0.35), Ui.darken(color, 0.85))
+		local stroke = detail:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Color = color
+		end
+
+		-- the coloured strip of grade blocks across the top
+		local strip = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, Parent = detail }, { Ui.list(Enum.FillDirection.Horizontal, 4) })
+		for i = 1, 9 do
+			local g = ({ e.g.d, e.g.s, e.g.r })[(i - 1) % 3 + 1]
+			Ui.new("Frame", { Size = UDim2.new(1 / 9, -4, 1, 0), BackgroundColor3 = Progression.GradeColor[g] or C.panel, Parent = strip }, { Ui.corner(3) })
+		end
+		-- tags
+		local tags = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 26), Position = UDim2.fromOffset(0, 22), BackgroundTransparency = 1, Parent = detail }, { Ui.list(Enum.FillDirection.Horizontal, 6) })
+		local s = Stats.compute(e.u, 0, e.t, nil, { l = e.l, g = e.g })
+		Ui.chip(def.attack.kind == "none" and "💰 Farm" or (s.hitsAir and "🌤 Air+Ground" or "🌍 Ground"), C.panel, { Size = UDim2.fromOffset(120, 26), Parent = tags })
+		Ui.chip("⚔ " .. def.role, C.panel, { Size = UDim2.fromOffset(150, 26), Parent = tags })
+		Ui.chip("👤 " .. def.limit, C.panel, { Size = UDim2.fromOffset(56, 26), Parent = tags })
+		Ui.text({ Text = def.rarity .. " Unit", Size = UDim2.new(1, 0, 0, 20), Position = UDim2.fromOffset(0, 54), TextColor3 = Ui.lighten(color, 0.3), MaxText = 18, Parent = detail })
+		Ui.title({ Text = Ui.unitName(e.u), Size = UDim2.new(1, 0, 0, 34), Position = UDim2.fromOffset(0, 74), MaxText = 32, Parent = detail })
+		Ui.viewport(e.u, { Size = UDim2.new(1, 0, 1, -230), Position = UDim2.fromOffset(0, 108) }, true).Parent = detail
+		-- level bar
+		local maxed = e.l >= Progression.MaxLevel
+		Ui.title({ Text = "Lvl " .. e.l, Size = UDim2.fromOffset(80, 22), Position = UDim2.new(0, 0, 1, -116), MaxText = 20, Parent = detail })
+		Ui.bar(detail, { Size = UDim2.new(1, -90, 0, 14), Position = UDim2.new(0, 88, 1, -112) }, C.gold, maxed and 1 or e.x / Progression.xpToNext(e.l))
+		-- stats
+		local stats = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 48), Position = UDim2.new(0, 0, 1, -88), BackgroundTransparency = 1, Parent = detail }, { Ui.list(Enum.FillDirection.Horizontal, 6) })
+		if def.attack.kind ~= "none" then
+			Ui.statChip("DMG", Ui.short(s.damage), e.g.d, C.red, { Size = UDim2.new(1 / 3, -4, 1, 0), Parent = stats })
+			Ui.statChip("SPA", string.format("%.2fs", s.cooldown), e.g.s, C.blue, { Size = UDim2.new(1 / 3, -4, 1, 0), Parent = stats })
+			Ui.statChip("RNG", string.format("%.1f", s.range), e.g.r, C.gold, { Size = UDim2.new(1 / 3, -4, 1, 0), Parent = stats })
+		else
+			Ui.statChip("FARM", "$" .. math.floor(s.farm) .. " / wave", nil, C.gold, { Size = UDim2.fromScale(1, 1), Parent = stats })
+		end
+		local trait = e.t and Traits.ById[e.t]
+		Ui.text({
+			Text = trait and ("🔮 " .. trait.name .. ": " .. trait.desc) or "🔮 No trait yet",
+			Size = UDim2.new(1, 0, 0, 30),
+			Position = UDim2.new(0, 0, 1, -34),
+			TextWrapped = true,
+			TextColor3 = trait and Ui.lighten(rarityColor(trait.rarity), 0.3) or C.muted,
+			MaxText = 15,
+			Parent = detail,
+		})
+
+		-- icon column
+		iconButton(icons, "🔮", C.purple, 1, function()
+			traitUnit = e.uid
+			open("Traits")
+		end)
+		iconButton(icons, data.units[e.uid].k and "🔒" or "🔓", data.units[e.uid].k and C.gold or C.panel, 2, function()
+			Store.call("LockUnit", e.uid)
+		end)
+		iconButton(icons, "⭐", C.blue, 3, function()
+			equipMode = not equipMode
+			refreshers.Units()
+		end)
+
+		-- slot picker over the details
+		if equipMode then
+			local picker = Ui.new("Frame", {
+				Size = UDim2.new(1, 0, 0, 120),
+				Position = UDim2.new(0, 0, 0.5, -60),
+				BackgroundColor3 = Color3.fromRGB(14, 10, 26),
+				BackgroundTransparency = 0.1,
+				ZIndex = 10,
+				Parent = detail,
+			}, { Ui.corner(12), Ui.stroke(C.gold, 3) })
+			Ui.title({ Text = "PICK A TEAM SLOT", Size = UDim2.new(1, 0, 0, 26), Position = UDim2.fromOffset(0, 6), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 22, ZIndex = 11, Parent = picker })
+			local row = Ui.new("Frame", { Size = UDim2.new(1, -20, 0, 60), Position = UDim2.fromOffset(10, 44), BackgroundTransparency = 1, ZIndex = 11, Parent = picker }, { Ui.list(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center) })
+			for i = 1, Units.TeamSize do
+				local unlocked = Progression.slotUnlocked(data.level, i)
+				local current = data.team[i]
+				local b = Ui.button(unlocked and tostring(i) or ("🔒" .. Progression.SlotUnlock[i]), unlocked and (current ~= "" and C.blue or C.green) or C.panel, function()
+					if not unlocked then
+						Ui.toast("Slot " .. i .. " unlocks at player level " .. Progression.SlotUnlock[i], C.red)
+						return
+					end
+					local ok, err = Store.call("EquipUnit", i, e.uid)
+					if not ok then
+						Ui.toast(err or "Could not equip", C.red)
+					end
+					equipMode = false
+					refreshers.Units()
+				end, { Size = UDim2.fromOffset(56, 56), MaxText = 22, ZIndex = 12, Parent = row })
+				b.ZIndex = 12
+			end
+		end
 	end
 end
 
@@ -6404,7 +6714,7 @@ return LobbyUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="26">
+        <Item class="LocalScript" referent="27">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- Client entry point.
@@ -6417,6 +6727,7 @@ local LobbyUI = require(script.Parent.LobbyUI)
 local BattleUI = require(script.Parent.BattleUI)
 local Ui = require(script.Parent.Ui)
 local Skins = require(script.Parent.Skins)
+local Animator = require(script.Parent.Animator)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
@@ -6425,6 +6736,7 @@ end)
 Store.start()
 Fx.start()
 Skins.start()
+Animator.start()
 
 -- wait for the save data before building the lobby
 while not Store.data do
@@ -6457,7 +6769,7 @@ Ui.toast("Welcome to Star Kingdom Defense, " .. Players.LocalPlayer.DisplayName 
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="27">
+        <Item class="ModuleScript" referent="28">
           <Properties>
             <string name="Name">Skins</string>
             <string name="Source"><![CDATA[-- Puts SM64 meshes on units, enemies, statues and UI models when ReplicatedStorage.SM64Models exists (a private
@@ -6530,17 +6842,47 @@ local function build(key: string): MeshPart?
 	end
 	local pos = decode64(data.positions)
 	local uvs = decode64(data.uvs)
-	local mesh = AssetService:CreateEditableMesh({})
 	local count = buffer.len(pos) // 12
+	-- centre the mesh on its bounding box so the MeshPart's position is the mesh's centre
+	local minV, maxV = Vector3.one * math.huge, -Vector3.one * math.huge
+	local points = table.create(count)
+	for i = 0, count - 1 do
+		local p = Vector3.new(buffer.readf32(pos, i * 12), buffer.readf32(pos, i * 12 + 4), buffer.readf32(pos, i * 12 + 8))
+		points[i + 1] = p
+		minV = minV:Min(p)
+		maxV = maxV:Max(p)
+	end
+	local center = (minV + maxV) / 2
+	local mesh = AssetService:CreateEditableMesh({})
+	local ids: { [string]: number } = {}
+	local faces = 0
 	for t = 0, count // 3 - 1 do
-		local v, u = {}, {}
-		for k = 0, 2 do
-			local i = t * 3 + k
-			v[k + 1] = mesh:AddVertex(Vector3.new(buffer.readf32(pos, i * 12), buffer.readf32(pos, i * 12 + 4), buffer.readf32(pos, i * 12 + 8)))
-			u[k + 1] = mesh:AddUV(Vector2.new(buffer.readf32(uvs, i * 8), buffer.readf32(uvs, i * 8 + 4)))
+		local a, b, c = points[t * 3 + 1], points[t * 3 + 2], points[t * 3 + 3]
+		-- skip zero-area triangles: they make mesh creation fail
+		if (b - a):Cross(c - a).Magnitude > 1e-6 then
+			local v, u = {}, {}
+			for k = 0, 2 do
+				local i = t * 3 + k
+				local p = points[i + 1] - center
+				local vkey = string.format("%.4f,%.4f,%.4f", p.X, p.Y, p.Z)
+				local id = ids[vkey]
+				if not id then
+					id = mesh:AddVertex(p)
+					ids[vkey] = id
+				end
+				v[k + 1] = id
+				u[k + 1] = mesh:AddUV(Vector2.new(buffer.readf32(uvs, i * 8), buffer.readf32(uvs, i * 8 + 4)))
+			end
+			if v[1] ~= v[2] and v[2] ~= v[3] and v[1] ~= v[3] then
+				local face = mesh:AddTriangle(v[1], v[2], v[3])
+				mesh:SetFaceUVs(face, u)
+				faces += 1
+			end
 		end
-		local face = mesh:AddTriangle(v[1], v[2], v[3])
-		mesh:SetFaceUVs(face, u)
+	end
+	if faces == 0 then
+		warn("[SM64] " .. key .. " has no usable triangles")
+		return nil
 	end
 	local part = AssetService:CreateMeshPartAsync(Content.fromObject(mesh))
 	local image = AssetService:CreateEditableImage({ Size = Vector2.new(data.width, data.height) })
@@ -6569,6 +6911,8 @@ function Skins.template(key: string): MeshPart?
 	local ok, result = pcall(build, key)
 	if not ok then
 		warn("[SM64] could not build " .. key .. ": " .. tostring(result))
+	elseif result then
+		print("[SM64] built " .. key)
 	end
 	templates[key] = ok and result or false
 	building[key] = nil
@@ -6611,12 +6955,16 @@ function Skins.apply(model: Model, isLocal: boolean?)
 			part.Anchored = true
 		else
 			part.Anchored = false
-			local weld = Instance.new("WeldConstraint")
+			-- a Weld (not a WeldConstraint) so the animator can bob and lunge it through C0
+			local weld = Instance.new("Weld")
+			weld.Name = "SkinWeld"
 			weld.Part0 = root
 			weld.Part1 = part
+			weld.C0 = CFrame.new(0, part.Size.Y / 2, 0)
 			weld.Parent = part
 		end
 		part.Parent = model
+		model:SetAttribute("SkinReady", true)
 	end)
 end
 
@@ -6640,7 +6988,7 @@ return Skins
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="28">
+        <Item class="ModuleScript" referent="29">
           <Properties>
             <string name="Name">Store</string>
             <string name="Source"><![CDATA[-- The client's copy of the player's save data and the current battle state, with change signals.
@@ -6690,7 +7038,7 @@ return Store
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="29">
+        <Item class="ModuleScript" referent="30">
           <Properties>
             <string name="Name">Ui</string>
             <string name="Source"><![CDATA[-- UI toolkit and the game's look: chunky outlined text, gradient buttons, gold-bannered windows, rarity unit cards,
@@ -7282,18 +7630,18 @@ return Ui
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="30">
+  <Item class="Workspace" referent="31">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="FilteringEnabled">true</bool>
       <bool name="NeedsPivotMigration">false</bool>
     </Properties>
-    <Item class="Model" referent="31">
+    <Item class="Model" referent="32">
       <Properties>
         <string name="Name">Lobby</string>
         <bool name="NeedsPivotMigration">false</bool>
       </Properties>
-      <Item class="Part" referent="32">
+      <Item class="Part" referent="33">
         <Properties>
           <string name="Name">Floor</string>
           <bool name="Anchored">true</bool>
@@ -7313,7 +7661,7 @@ return Ui
           <token name="TopSurface">0</token>
         </Properties>
       </Item>
-      <Item class="SpawnLocation" referent="33">
+      <Item class="SpawnLocation" referent="34">
         <Properties>
           <string name="Name">Spawn</string>
           <bool name="Anchored">true</bool>

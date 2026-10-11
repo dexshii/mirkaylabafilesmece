@@ -443,8 +443,16 @@ local TERRAIN = {
 }
 
 -- removes a map's terrain
+-- in chunks (one huge region at once can fail); yields
 function MapBuilder.clear(origin: Vector3)
-	workspace.Terrain:FillBlock(CFrame.new(origin + Vector3.new(0, 10, 0)), Vector3.new(1200, 120, 1200), Enum.Material.Air)
+	for x = -500, 375, 125 do
+		for z = -500, 375, 125 do
+			pcall(function()
+				workspace.Terrain:FillBlock(CFrame.new(origin + Vector3.new(x + 62.5, 20, z + 62.5)), Vector3.new(128, 100, 128), Enum.Material.Air)
+			end)
+		end
+		task.wait()
+	end
 end
 
 local function nearPath(waypoints: { { number } }, x: number, z: number, margin: number): boolean
@@ -479,13 +487,13 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 	terrain:FillBlock(CFrame.new(origin + Vector3.new(0, -20, 0)), Vector3.new(1100, 12, 1100), look.world)
 	for _ = 1, 22 do
 		local a = rng:NextNumber(0, math.pi * 2)
-		local r = rng:NextNumber(190, 480)
+		local r = rng:NextNumber(130, 420)
 		local size = rng:NextNumber(30, 70)
 		terrain:FillBall(origin + Vector3.new(math.cos(a) * r, -16, math.sin(a) * r), size, rng:NextNumber() < 0.7 and look.world or look.cliff)
 	end
 	for _ = 1, 3 do
 		local a = rng:NextNumber(0, math.pi * 2)
-		local r = rng:NextNumber(170, 300)
+		local r = rng:NextNumber(110, 260)
 		local c = origin + Vector3.new(math.cos(a) * r, -16, math.sin(a) * r)
 		terrain:FillCylinder(CFrame.new(c), 4, rng:NextNumber(25, 45), look.lake)
 	end
@@ -508,7 +516,7 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 	local makeScenery = scenery[def.id]
 	for i = 1, 26 do
 		local a = i / 26 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
-		local r = rng:NextNumber(200, 420)
+		local r = rng:NextNumber(130, 380)
 		makeScenery(world, origin + Vector3.new(math.cos(a) * r, -14, math.sin(a) * r), rng:NextNumber(0.8, 1.4), rng)
 	end
 	if def.id == "meadow" or def.id == "desert" or def.id == "frost" then
@@ -566,11 +574,11 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 		total += c[2]
 	end
 	local placed, tries = 0, 0
-	while placed < 60 and tries < 900 do
+	while placed < 34 and tries < 900 do
 		tries += 1
 		local x = rng:NextNumber(-half + 5, half - 5)
 		local z = rng:NextNumber(-half + 5, half - 5)
-		local edge = math.max(math.abs(x), math.abs(z)) > half - 26
+		local edge = math.max(math.abs(x), math.abs(z)) > half - 18
 		if not nearPath(def.waypoints, x, z, edge and 12 or 22) and (edge or rng:NextNumber() < 0.25) then
 			local roll = rng:NextNumber() * total
 			for _, c in choices do

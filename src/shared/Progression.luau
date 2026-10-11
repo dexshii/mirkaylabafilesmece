@@ -64,4 +64,15 @@ end
 
 Progression.DefaultGrades = { d = "A", s = "A", r = "A" }
 
+-- the player's own level, from battle XP; team slots 4-6 unlock at these levels
+Progression.SlotUnlock = { 1, 1, 1, 5, 10, 15 }
+
+function Progression.playerXpToNext(level: number): number
+	return 150 + 50 * (level - 1)
+end
+
+function Progression.slotUnlocked(level: number?, slot: number): boolean
+	return (level or 1) >= (Progression.SlotUnlock[slot] or 1)
+end
+
 return Progression
