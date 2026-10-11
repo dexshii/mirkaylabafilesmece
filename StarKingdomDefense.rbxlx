@@ -899,7 +899,8 @@ end
 -- ============================================================ custom models
 -- A Model in ReplicatedStorage.CustomModels named after a unit or enemy id (e.g. "captaincomet", "grumble")
 -- replaces the built-in model: it is scaled to the unit's height, stood on its feet and welded to a Root. Models are
--- expected to face -Z (Roblox's front). A "DisplayName" attribute on it renames the unit or enemy in the UI.
+-- expected to face -Z (Roblox's front; a "FaceYaw" attribute in degrees turns one that doesn't). A "DisplayName"
+-- attribute on it renames the unit or enemy in the UI. tools/sm64_import makes these from your own SM64 ROM.
 
 local function customModel(key: string): Model?
 	local folder = ReplicatedStorage:FindFirstChild("CustomModels")
@@ -966,8 +967,10 @@ local function buildCustom(source: Model, key: string, scale: number, anchored: 
 	end
 	root.Parent = model
 	model.PrimaryPart = root
-	-- the model's origin is its feet, at the world origin like the built-in models
-	model:PivotTo(CFrame.new())
+	-- the model's origin is its feet, at the world origin like the built-in models. A "FaceYaw" attribute (degrees)
+	-- turns a model that was imported facing the wrong way.
+	local yaw = source:GetAttribute("FaceYaw")
+	model:PivotTo(CFrame.Angles(0, math.rad(type(yaw) == "number" and yaw or 0), 0))
 	return model
 end
 

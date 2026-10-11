@@ -1,3 +1,10 @@
 sourcemap.json
 *.rbxl.lock
 *.rbxlx.lock
+# Nintendo data never goes in this repository: ROMs and anything made from them stay local
+*.z64
+*.v64
+*.n64
+sm64-src/
+sm64_models/
+__pycache__/

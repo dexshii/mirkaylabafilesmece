@@ -3,8 +3,12 @@
 A Mario-inspired tower defense game for Roblox. Summon units of four rarities, build a team of six, defend your
 castle across five campaign maps, clear daily challenges for Trait Crystals, and roll traits that buff your units.
 
-Every character, map and effect is built from Roblox parts in code, so the game has no uploaded meshes, images or
-sounds and contains no Nintendo assets.
+Every character, map and effect is built from Roblox parts in code, so the game works with no uploaded meshes, images
+or sounds and contains no Nintendo assets.
+
+**Want the real Super Mario 64 characters?** [`tools/sm64_import`](tools/sm64_import/README.md) turns your own SM64
+ROM into models for Studio's 3D Importer: Mario, Bowser, Peach, Goombas, Boos, Chain Chomps and more. Imported models
+replace the built-in ones everywhere, with their SM64 names.
 
 ## Play it
 
@@ -21,9 +25,15 @@ Without this the game still runs, but every session starts fresh. The output win
 
 ## How to play
 
+- **Lobby**: use the menu tiles on the left, or walk up to the castle's battle gate (Play) or the Summon Hall
+  pedestal (Summon) and press E. Summoned units appear on the pedestal in a beam of their rarity's colour.
 - **Play**: pick a map and stage. Click a unit in the hotbar (or press 1–6), then click the ground to place it. Hold
-  Shift to keep placing, and press Q or right-click to cancel. Click a placed unit to upgrade it (4 levels), change
-  its targeting (First / Last / Strongest / Closest) or sell it for 60%.
+  Shift to keep placing, and press Q or right-click to cancel. Click a placed unit to upgrade it with T (4 upgrades),
+  change its targeting with R (First / Last / Strongest / Closest) or sell it for 60% with X.
+- **Waves** arrive on a timer, even while enemies are still alive. When the field is clear the next wave comes after
+  3 seconds, and once a wave has finished spawning you can skip ahead. Every wave pays a cash bonus.
+- **Units level up** (up to Lvl 50, +1.2% damage per level) from the XP each battle gives the team. Each summoned
+  unit also rolls **stat grades** from C to SSS for damage (DMG), attack speed (SPA) and range (RNG).
 - Units can't go on the path or right next to each other. A green range circle means the spot is valid.
 - Enemies come from the purple portal. Each one that reaches your castle costs castle health; a boss ends the run.
 - Cash comes from kills, wave-clear bonuses and farm units. You can start the next wave early and play at 1x, 2x or 3x
@@ -108,18 +118,24 @@ src/shared/              ReplicatedStorage.Shared: game data and rules used by s
   Challenges.luau        challenges and their modifiers
   Rarities.luau          rarity colors, summon and trait odds, pity
   Stats.luau             effective unit stats, costs and placement rules
+  Progression.luau       unit levels and XP, C-SSS stat grades
   ModelFactory.luau      every unit and enemy model, built from parts
 src/server/              ServerScriptService.Server
   Main.server.luau       remotes: summons, traits, team, starting and ending battles, rewards
   Battle.luau            the battle simulation: waves, enemies, units, auras, abilities
   MapBuilder.luau        builds a map's terrain, path, portal and castle
   DataService.luau       DataStore saving
-  Lobby.luau             lobby decorations
+  Lobby.luau             the lobby: castle and battle gate, Summon Hall, unit statues
 src/client/              StarterPlayerScripts.Client: lobby windows, battle HUD, placement, effects
+  Ui.luau                the UI kit: windows, buttons, unit cards, stat chips, viewports
+tools/sm64_import/       makes real SM64 models from your own ROM (see its README)
 ```
 
-Most balance changes are a number in `src/shared`. To work on the code with live sync, install Rojo, run
-`rojo serve`, and connect from the Rojo plugin in Studio. To rebuild the place file, run:
+Most balance changes are a number in `src/shared`. To use your own models, put a Model named after a unit or enemy id
+(for example `captaincomet` or `grumble`) in a Folder `ReplicatedStorage/CustomModels`. It replaces the built-in model,
+scaled automatically, and a `DisplayName` attribute on it renames the character in the UI.
+
+To work on the code with live sync, install Rojo, run `rojo serve`, and connect from the Rojo plugin in Studio. To rebuild the place file, run:
 
 ```
 rojo build -o StarKingdomDefense.rbxlx
