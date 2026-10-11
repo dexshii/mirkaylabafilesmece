@@ -4640,6 +4640,7 @@ local Rarities = require(Shared.Rarities)
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
 local Skins = require(script.Parent.Skins)
+local Audio = require(script.Parent.Audio)
 
 local AdminPanel = {}
 
@@ -4757,7 +4758,7 @@ function AdminPanel.start()
 		window.Visible = not window.Visible
 		if window.Visible then
 			Ui.pop(window)
-			local lines = {}
+			local lines = { Audio.status() }
 			if not Skins.available() then
 				table.insert(lines, "No SM64Models folder: this is the build without SM64 models.")
 			else
@@ -4985,6 +4986,254 @@ return Animator
         </Item>
         <Item class="ModuleScript" referent="25">
           <Properties>
+            <string name="Name">Audio</string>
+            <string name="Source"><![CDATA[-- Music and sound effects. With ReplicatedStorage.SM64Models.Audio (made by tools/sm64_import/sm64_audio.py from
+-- your own ROM) and its files uploaded to Roblox, the game plays SM64's music and sounds: each upload holds many
+-- clips, and a Sound plays one clip as its PlaybackRegion. Upload ids come from that module's `ids`, or from
+-- attributes of the same names on SoundService (set those in Studio so a rebuild doesn't clear them). Without
+-- them a few built-in Roblox sounds stand in and there is no music. M mutes or unmutes the music.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+local ContentProvider = game:GetService("ContentProvider")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local Audio = {}
+
+Audio.musicVolume = 0.35
+Audio.sfxVolume = 0.6
+Audio.musicMuted = false
+
+type Clip = { sheet: string, start: number, length: number }
+
+local clips: { [string]: Clip } = {}
+local sheets: { [string]: Sound } = {} -- a loaded Sound per uploaded file, cloned to play
+local lastPlayed: { [string]: number } = {}
+local playing: { [string]: number } = {}
+
+-- built-in sounds for when there's no SM64 audio
+local FALLBACK: { [string]: { id: string, pitch: number, volume: number } } = {
+	ui_click = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 1.6, volume = 0.25 },
+	ui_open = { id = "rbxasset://sounds/swoosh.wav", pitch = 1.3, volume = 0.3 },
+	ui_close = { id = "rbxasset://sounds/swoosh.wav", pitch = 1.0, volume = 0.25 },
+	coin = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 2.0, volume = 0.3 },
+	star_appears = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 1.2, volume = 0.6 },
+	power_meter = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 0.9, volume = 0.4 },
+	swish = { id = "rbxasset://sounds/swoosh.wav", pitch = 1.4, volume = 0.3 },
+}
+
+local function load()
+	local folder = ReplicatedStorage:FindFirstChild("SM64Models")
+	local module = folder and folder:FindFirstChild("Audio")
+	if not module or not module:IsA("ModuleScript") then
+		return
+	end
+	local ok, data = pcall(require, module)
+	if not ok or type(data) ~= "table" then
+		return
+	end
+	local ids = data.ids or {}
+	local toLoad = {}
+	for sheet in ids do
+		local id = SoundService:GetAttribute(sheet) or ids[sheet]
+		if type(id) == "string" then
+			id = tonumber(id:match("%d+"))
+		end
+		if type(id) == "number" and id > 0 then
+			local sound = Instance.new("Sound")
+			sound.Name = sheet
+			sound.SoundId = "rbxassetid://" .. id
+			sound.PlaybackRegionsEnabled = true
+			sound.Volume = 0
+			sound.Parent = SoundService
+			sheets[sheet] = sound
+			table.insert(toLoad, sound)
+		end
+	end
+	for name, c in data.clips or {} do
+		if sheets[c[1]] then
+			clips[name] = { sheet = c[1], start = c[2], length = c[3] }
+		end
+	end
+	task.spawn(function()
+		pcall(function()
+			ContentProvider:PreloadAsync(toLoad)
+		end)
+	end)
+	print(string.format("[SM64] audio: %d clips from %d uploads", (function()
+		local n = 0
+		for _ in clips do
+			n += 1
+		end
+		return n
+	end)(), #toLoad))
+end
+
+-- how many clips and uploaded files are in use (for the admin panel)
+function Audio.status(): string
+	local n, s = 0, 0
+	for _ in clips do
+		n += 1
+	end
+	for _ in sheets do
+		s += 1
+	end
+	return string.format("SM64 audio: %d clips from %d uploaded files", n, s)
+end
+
+function Audio.has(name: string): boolean
+	return clips[name] ~= nil
+end
+
+-- plays a sound effect. opts: volume (0..1, times the sfx volume), pitch, gap (seconds before it may play again),
+-- max (how many may play at once)
+function Audio.play(name: string, opts: { volume: number?, pitch: number?, gap: number?, max: number? }?)
+	local o = opts or {}
+	local now = os.clock()
+	if now - (lastPlayed[name] or 0) < (o.gap or 0.04) then
+		return
+	end
+	if (playing[name] or 0) >= (o.max or 4) then
+		return
+	end
+	local clip = clips[name]
+	local sound: Sound
+	local length
+	if clip then
+		sound = sheets[clip.sheet]:Clone()
+		sound.PlaybackRegion = NumberRange.new(clip.start, clip.start + clip.length)
+		sound.Volume = Audio.sfxVolume * (o.volume or 1)
+		length = clip.length
+	else
+		local fb = FALLBACK[name]
+		if not fb then
+			return
+		end
+		sound = Instance.new("Sound")
+		sound.SoundId = fb.id
+		sound.Volume = Audio.sfxVolume * fb.volume * (o.volume or 1)
+		sound.PlaybackSpeed = fb.pitch
+		length = 2
+	end
+	lastPlayed[name] = now
+	playing[name] = (playing[name] or 0) + 1
+	if o.pitch then
+		sound.PlaybackSpeed *= o.pitch
+	end
+	sound.Parent = SoundService
+	sound:Play()
+	task.delay(length / sound.PlaybackSpeed + 0.2, function()
+		playing[name] = math.max(0, (playing[name] or 1) - 1)
+		sound:Destroy()
+	end)
+end
+
+-- ============================================================ music
+
+local current: Sound? = nil
+local currentName: string? = nil
+
+local function fadeOut(sound: Sound, t: number)
+	TweenService:Create(sound, TweenInfo.new(t), { Volume = 0 }):Play()
+	task.delay(t, function()
+		sound:Destroy()
+	end)
+end
+
+-- switches the background music (nil stops it), crossfading over `fade` seconds
+function Audio.music(name: string?, fade: number?)
+	if name == currentName then
+		return
+	end
+	currentName = name
+	local t = fade or 1.2
+	if current then
+		fadeOut(current, t)
+		current = nil
+	end
+	local clip = name and clips[name]
+	if not clip then
+		return
+	end
+	local sound = sheets[clip.sheet]:Clone()
+	sound.Name = "Music"
+	sound.Looped = true
+	sound.PlaybackRegion = NumberRange.new(clip.start, clip.start + clip.length)
+	sound.LoopRegion = NumberRange.new(clip.start, clip.start + clip.length)
+	sound.Volume = 0
+	sound.Parent = SoundService
+	sound:Play()
+	TweenService:Create(sound, TweenInfo.new(t), { Volume = Audio.musicMuted and 0 or Audio.musicVolume }):Play()
+	current = sound
+end
+
+-- plays a jingle over the music, which dips meanwhile
+function Audio.jingle(name: string)
+	local clip = clips[name]
+	if not clip then
+		return
+	end
+	Audio.play(name, { volume = 1.2, gap = 0.5, max = 1 })
+	if current and not Audio.musicMuted then
+		local music = current
+		TweenService:Create(music, TweenInfo.new(0.3), { Volume = Audio.musicVolume * 0.2 }):Play()
+		task.delay(clip.length, function()
+			if music.Parent and music == current then
+				TweenService:Create(music, TweenInfo.new(1), { Volume = Audio.musicVolume }):Play()
+			end
+		end)
+	end
+end
+
+function Audio.setMusicMuted(muted: boolean)
+	Audio.musicMuted = muted
+	if current then
+		TweenService:Create(current, TweenInfo.new(0.4), { Volume = muted and 0 or Audio.musicVolume }):Play()
+	end
+end
+
+-- ============================================================ start
+
+function Audio.start()
+	load()
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if not processed and input.KeyCode == Enum.KeyCode.M then
+			Audio.setMusicMuted(not Audio.musicMuted)
+		end
+	end)
+end
+
+-- picks the music for what's on screen: the lobby, a map's theme, or the boss theme while a boss is alive
+local wasActive = false
+function Audio.followBattle(state: any)
+	if not state.active then
+		wasActive = false
+		Audio.music(if workspace:GetAttribute("BattleServer") then nil else "music_lobby")
+		return
+	end
+	if state.state == "won" or state.state == "lost" then
+		return -- the end screen's jingle plays instead
+	end
+	if not wasActive then
+		wasActive = true
+		Audio.play("voice_here_we_go", { gap = 2 })
+	end
+	if state.boss and state.boss.hp > 0 then
+		if currentName ~= "music_boss" then
+			Audio.play("bowser_roar", { volume = 1, gap = 3, max = 1 })
+		end
+		Audio.music("music_boss", 0.8)
+	elseif state.mapId then
+		Audio.music("music_" .. state.mapId)
+	end
+end
+
+return Audio
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="26">
+          <Properties>
             <string name="Name">BattleUI</string>
             <string name="Source"><![CDATA[-- The battle HUD: boss bar, wave counter and countdown ring, castle health, cash, the unit hotbar, placing units,
 -- the selected-unit panel (Upgrade T, Sell X, Target R) and the victory/defeat screen.
@@ -5004,6 +5253,7 @@ local ModelFactory = require(Shared.ModelFactory)
 local Net = require(Shared.Net)
 
 local Ui = require(script.Parent.Ui)
+local Audio = require(script.Parent.Audio)
 local Store = require(script.Parent.Store)
 local Skins = require(script.Parent.Skins)
 
@@ -5237,7 +5487,9 @@ local function sellSelected()
 	if not selectedTower then
 		return
 	end
-	Store.call("SellTower", selectedTower:GetAttribute("TowerId"))
+	if Store.call("SellTower", selectedTower:GetAttribute("TowerId")) then
+		Audio.play("coin_spurt", { max = 2 })
+	end
 	deselect()
 end
 
@@ -5556,6 +5808,13 @@ local function showEnd(result)
 	end
 	cancelPlacement()
 	deselect()
+	if result.won then
+		Audio.music(nil, 0.5)
+		Audio.jingle("jingle_victory")
+		task.delay(0.6, Audio.play, "voice_yahoo", { gap = 1 })
+	else
+		Audio.play("voice_mama_mia", { gap = 1 })
+	end
 	Ui.clear(endPanel)
 	endPanel.Visible = true
 	Ui.pop(endPanel)
@@ -5805,7 +6064,7 @@ return BattleUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="26">
+        <Item class="ModuleScript" referent="27">
           <Properties>
             <string name="Name">Fx</string>
             <string name="Source"><![CDATA[-- Attack and ability effects, drawn only on this client from the server's Fx events.
@@ -5815,6 +6074,7 @@ local Debris = game:GetService("Debris")
 
 local Net = require(game.ReplicatedStorage.Shared.Net)
 local Animator = require(script.Parent.Animator)
+local Audio = require(script.Parent.Audio)
 
 local Fx = {}
 
@@ -6032,6 +6292,22 @@ function Fx.start()
 	folder = Instance.new("Folder")
 	folder.Name = "ClientFx"
 	folder.Parent = workspace
+	-- sound per effect style: { clip, volume, seconds before it may play again }
+	local STYLE_SOUNDS = {
+		pop = { "enemy_die", 0.5, 0.06 },
+		placed = { "pound", 0.7, 0.1 },
+		cash = { "coin", 0.45, 0.15 },
+		leak = { "hit", 0.8, 0.3 },
+		shield = { "boing", 0.6, 0.3 },
+		shock = { "thwomp", 0.7, 0.3 },
+		summon = { "goomba_alert", 0.6, 0.4 },
+		bolt = { "throw", 0.18, 0.12 },
+		bonk = { "stomped", 0.25, 0.12 },
+		cone = { "flame", 0.2, 0.2 },
+		lob = { "explosion", 0.2, 0.25 },
+		slam = { "pound", 0.3, 0.2 },
+		zap = { "spin", 0.2, 0.12 },
+	}
 	-- the server sends each frame's effects as one list
 	Net.ev("Fx").OnClientEvent:Connect(function(list)
 		local numbers = 0
@@ -6043,6 +6319,13 @@ function Fx.start()
 			chainArcs(p)
 			if p.tower then
 				Animator.attack(p.tower)
+			end
+			local sfx = STYLE_SOUNDS[p.style]
+			if sfx then
+				Audio.play(sfx[1], { volume = sfx[2], gap = sfx[3], max = 3 })
+			end
+			if p.style == "pop" and p.boss then
+				Audio.play("big_explosion", { gap = 1 })
 			end
 			-- at most a few damage numbers per frame, so big fights stay smooth
 			if p.dmg and p.to and numbers < 6 then
@@ -6057,7 +6340,7 @@ return Fx
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="27">
+        <Item class="ModuleScript" referent="28">
           <Properties>
             <string name="Name">IconData</string>
             <string name="Source"><![CDATA[-- 96x96 RGBA pixels (base64) for the UI icons, drawn as SVG in tools/icons (generated; edit the SVGs instead)
@@ -6078,7 +6361,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="28">
+        <Item class="ModuleScript" referent="29">
           <Properties>
             <string name="Name">LobbyUI</string>
             <string name="Source"><![CDATA[-- Lobby screens: menu tiles, currencies, the team tray and the Play / Summon / Units / Traits / Challenges windows,
@@ -6100,6 +6383,7 @@ local Progression = require(Shared.Progression)
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
 local SummonFx = require(script.Parent.SummonFx)
+local Audio = require(script.Parent.Audio)
 
 local LobbyUI = {}
 
@@ -6174,6 +6458,9 @@ local function setBlur(on: boolean)
 end
 
 local function open(name: string?)
+	if name ~= openName then
+		Audio.play(name and "ui_open" or "ui_close", { volume = 0.5, gap = 0.1, max = 1 })
+	end
 	setBlur(name ~= nil)
 	for n, w in windows do
 		if n == name then
@@ -7168,7 +7455,7 @@ return LobbyUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="29">
+        <Item class="LocalScript" referent="30">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- Client entry point.
@@ -7184,12 +7471,14 @@ local Skins = require(script.Parent.Skins)
 local Animator = require(script.Parent.Animator)
 local AdminPanel = require(script.Parent.AdminPanel)
 local Travel = require(script.Parent.Travel)
+local Audio = require(script.Parent.Audio)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 end)
 
 Store.start()
+Audio.start()
 Travel.start()
 Fx.start()
 Skins.start()
@@ -7209,7 +7498,9 @@ local battleServer = workspace:GetAttribute("BattleServer") == true
 LobbyUI.setVisible(not battleServer)
 Store.BattleChanged:Connect(function(state)
 	LobbyUI.setVisible(not state.active and not battleServer)
+	Audio.followBattle(state)
 end)
+Audio.followBattle(Store.battle)
 
 -- scale the UI down on small screens
 local camera = workspace.CurrentCamera
@@ -7230,7 +7521,7 @@ Ui.toast("Welcome to Star Kingdom Defense, " .. Players.LocalPlayer.DisplayName 
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="30">
+        <Item class="ModuleScript" referent="31">
           <Properties>
             <string name="Name">Skins</string>
             <string name="Source"><![CDATA[-- Puts SM64 meshes on units, enemies, statues and UI models when ReplicatedStorage.SM64Models exists (a private
@@ -7671,7 +7962,7 @@ return Skins
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="31">
+        <Item class="ModuleScript" referent="32">
           <Properties>
             <string name="Name">Store</string>
             <string name="Source"><![CDATA[-- The client's copy of the player's save data and the current battle state, with change signals.
@@ -7721,7 +8012,7 @@ return Store
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="32">
+        <Item class="ModuleScript" referent="33">
           <Properties>
             <string name="Name">SummonFx</string>
             <string name="Source"><![CDATA[-- The summon animation: a Power Star spins up in a burst of rays whose colour climbs toward the best rarity
@@ -7736,6 +8027,8 @@ local Rarities = require(Shared.Rarities)
 local Progression = require(Shared.Progression)
 
 local Ui = require(script.Parent.Ui)
+local Audio = require(script.Parent.Audio)
+local Store = require(script.Parent.Store)
 
 local SummonFx = {}
 
@@ -7746,21 +8039,6 @@ local function tween(inst: Instance, t: number, goal: { [string]: any }, style: 
 	local tw = TweenService:Create(inst, TweenInfo.new(t, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), goal)
 	tw:Play()
 	return tw
-end
-
-local function sound(id: string, volume: number, pitch: number?)
-	local s = Instance.new("Sound")
-	s.SoundId = id
-	s.Volume = volume
-	s.PlaybackSpeed = pitch or 1
-	s.Parent = workspace.CurrentCamera
-	s:Play()
-	s.Ended:Once(function()
-		s:Destroy()
-	end)
-	task.delay(4, function()
-		s:Destroy()
-	end)
 end
 
 local RAINBOW = ColorSequence.new({
@@ -7782,12 +8060,13 @@ local function rays(parent: Instance, count: number, length: number, color: Colo
 		Parent = parent,
 	})
 	local list = {}
+	-- each ray is a line through the centre: a GuiObject rotates about its own middle
 	for i = 1, count do
 		local ray = Ui.new("Frame", {
-			Size = UDim2.fromOffset(i % 2 == 0 and 26 or 46, length),
-			AnchorPoint = Vector2.new(0.5, 1),
+			Size = UDim2.fromOffset(i % 2 == 0 and 26 or 46, length * 2),
+			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromOffset(0, 0),
-			Rotation = i / count * 360,
+			Rotation = i / count * 180,
 			BackgroundColor3 = color,
 			BackgroundTransparency = 0.55,
 			BorderSizePixel = 0,
@@ -7796,7 +8075,13 @@ local function rays(parent: Instance, count: number, length: number, color: Colo
 		}, {
 			Ui.new("UIGradient", {
 				Rotation = 90,
-				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.6, 0.3), NumberSequenceKeypoint.new(1, 0) }),
+				Transparency = NumberSequence.new({
+					NumberSequenceKeypoint.new(0, 1),
+					NumberSequenceKeypoint.new(0.42, 0.25),
+					NumberSequenceKeypoint.new(0.5, 0.6),
+					NumberSequenceKeypoint.new(0.58, 0.25),
+					NumberSequenceKeypoint.new(1, 1),
+				}),
 			}),
 		})
 		table.insert(list, ray)
@@ -7858,13 +8143,22 @@ function SummonFx.play(results: { any }, done: () -> ())
 		Rotation = 90,
 		Parent = root,
 	})
-	local scale = Ui.new("UIScale", { Parent = root })
+	-- everything but the background and rays sits on a 1280x760 stage in the middle of the screen, scaled to fit
+	local stage = Ui.new("Frame", {
+		Size = UDim2.fromOffset(1280, 760),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		BackgroundTransparency = 1,
+		ZIndex = 3,
+		Parent = root,
+	})
+	local scale = Ui.new("UIScale", { Parent = stage })
 	local cam = workspace.CurrentCamera
 	scale.Scale = math.clamp(math.min(cam.ViewportSize.X / 1280, cam.ViewportSize.Y / 760), 0.5, 1.25)
 	tween(root, 0.3, { BackgroundTransparency = 0 })
 
 	local connections: { RBXScriptConnection } = {}
-	local holder, rayList = rays(root, 18, 900, WHITE, 2)
+	local holder, rayList = rays(root, 9, 1400, WHITE, 2)
 	local spinSpeed = 30
 	local shake = 0
 	table.insert(
@@ -7872,9 +8166,9 @@ function SummonFx.play(results: { any }, done: () -> ())
 		RunService.RenderStepped:Connect(function(dt)
 			holder.Rotation += spinSpeed * dt
 			if shake > 0 then
-				root.Position = UDim2.fromOffset(math.random(-shake, shake), math.random(-shake, shake))
+				stage.Position = UDim2.new(0.5, math.random(-shake, shake), 0.5, math.random(-shake, shake))
 			else
-				root.Position = UDim2.new()
+				stage.Position = UDim2.fromScale(0.5, 0.5)
 			end
 		end)
 	)
@@ -7898,9 +8192,9 @@ function SummonFx.play(results: { any }, done: () -> ())
 		BackgroundColor3 = WHITE,
 		BackgroundTransparency = 0.6,
 		ZIndex = 3,
-		Parent = root,
+		Parent = stage,
 	}, { Ui.round() })
-	local star = Ui.icon("star", "⭐", { Size = UDim2.fromOffset(190, 190), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), MaxText = 150, ZIndex = 4, Parent = root })
+	local star = Ui.icon("star", "⭐", { Size = UDim2.fromOffset(190, 190), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), MaxText = 150, ZIndex = 4, Parent = stage })
 	local starScale = Ui.new("UIScale", { Scale = 0.1, Parent = star })
 	tween(starScale, 0.5, { Scale = 1 }, Enum.EasingStyle.Back)
 	local caption = Ui.title({
@@ -7912,7 +8206,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 		MaxText = 40,
 		Outline = 3,
 		ZIndex = 5,
-		Parent = root,
+		Parent = stage,
 	})
 	Ui.text({
 		Text = "click to skip",
@@ -7923,7 +8217,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 		TextColor3 = C.muted,
 		MaxText = 18,
 		ZIndex = 5,
-		Parent = root,
+		Parent = stage,
 	})
 
 	local skipped = false
@@ -7939,7 +8233,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 	end
 
 	-- the build-up: each stage the pull reaches turns the rays and glow a rarer colour
-	sound("rbxasset://sounds/swoosh.wav", 0.6)
+	Audio.music("music_summon", 0.4)
 	local stages = {
 		{ rank = 1, color = Color3.fromRGB(230, 230, 255), text = "SUMMONING..." },
 		{ rank = 2, color = rarityColor("Rare"), text = "RARE...?" },
@@ -7956,7 +8250,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 		caption.TextColor3 = st.color
 		Ui.pop(caption)
 		burst(root, st.color, 10 + i * 8, 4)
-		sound("rbxasset://sounds/electronicpingshort.wav", 0.5, 0.8 + i * 0.15)
+		Audio.play("power_meter", { pitch = 0.9 + i * 0.12, gap = 0.1 })
 		spinSpeed = 30 + i * 50
 		shake = (i - 1) * 3
 		tween(star, 0.6, { Rotation = star.Rotation + 360 }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
@@ -7974,155 +8268,166 @@ function SummonFx.play(results: { any }, done: () -> ())
 		flash:Destroy()
 	end)
 	burst(root, rarityColor(best.rarity), 40, 6)
-	sound("rbxasset://sounds/electronicpingshort.wav", 0.8, 1.6)
+	Audio.play("star_appears", { volume = 1 })
+	if bestRank >= 4 then
+		task.delay(0.4, Audio.play, "voice_yahoo", { gap = 1 })
+	elseif bestRank == 3 then
+		task.delay(0.4, Audio.play, "voice_yippee", { gap = 1 })
+	end
 	star:Destroy()
 	glow:Destroy()
 	caption:Destroy()
 	spinSpeed = 18
 	colorRays(rarityColor(best.rarity), bestRank == 4)
 
-	-- reveal
-	local banner = ({ "NICE PULL!", "RARE PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
-	local title = Ui.title({
-		Text = banner,
-		Size = UDim2.fromOffset(700, 70),
-		Position = UDim2.new(0.5, 0, 0.5, -280),
-		AnchorPoint = Vector2.new(0.5, 0),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextColor3 = rarityColor(best.rarity),
-		MaxText = 64,
-		Outline = 4,
-		ZIndex = 8,
-		Parent = root,
-	})
-	if bestRank == 4 then
-		title.TextColor3 = WHITE
-		Ui.spin(Ui.new("UIGradient", { Color = RAINBOW, Parent = title }), 120)
-	end
-	Ui.pop(title)
-
-	local function gradeRow(parent: Instance, grades: any, props: { [string]: any })
-		local row = Ui.new("Frame", props, { Ui.list(Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Center) })
-		row.BackgroundTransparency = 1
-		row.Parent = parent
-		local g = grades or Progression.DefaultGrades
-		for _, k in { "d", "s", "r" } do
-			Ui.gradeBadge(g[k], { Size = UDim2.fromOffset(40, 22), MaxText = 18, ZIndex = 9, Parent = row })
-		end
-		return row
-	end
-
-	if #results == 1 then
-		local r = results[1]
-		local vp = Ui.viewport(r.unitId, {
-			Size = UDim2.fromOffset(380, 380),
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.5, -20),
-			ZIndex = 8,
-			Parent = root,
-		}, true)
-		Ui.pop(vp)
-		local name = Ui.title({
-			Text = Ui.unitName(r.unitId),
-			Size = UDim2.fromOffset(600, 50),
+	-- reveal (whatever goes wrong in it, the close button below still appears)
+	local revealed, revealError = pcall(function()
+		local banner = ({ "NICE PULL!", "RARE PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
+		local title = Ui.title({
+			Text = banner,
+			Size = UDim2.fromOffset(700, 70),
+			Position = UDim2.new(0.5, 0, 0.5, -280),
 			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0.5, 160),
 			TextXAlignment = Enum.TextXAlignment.Center,
-			MaxText = 44,
-			Outline = 3,
-			ZIndex = 9,
-			Parent = root,
-		})
-		Ui.pop(name, 0.1)
-		Ui.chip(r.rarity, rarityColor(r.rarity), { Size = UDim2.fromOffset(150, 28), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 212), ZIndex = 9, Parent = root })
-		gradeRow(root, r.grades, { Size = UDim2.fromOffset(200, 24), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 248) })
-	else
-		local grid = Ui.new("Frame", {
-			Size = UDim2.fromOffset(5 * 150, 2 * 214),
-			Position = UDim2.new(0.5, 0, 0.5, 10),
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundTransparency = 1,
+			TextColor3 = rarityColor(best.rarity),
+			MaxText = 64,
+			Outline = 4,
 			ZIndex = 8,
-			Parent = root,
-		}, {
-			Ui.new("UIGridLayout", {
-				CellSize = UDim2.fromOffset(138, 202),
-				CellPadding = UDim2.fromOffset(12, 12),
-				HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				VerticalAlignment = Enum.VerticalAlignment.Center,
-				SortOrder = Enum.SortOrder.LayoutOrder,
-			}),
+			Parent = stage,
 		})
-		local cards = {}
-		for i, r in results do
-			local slot = Ui.new("Frame", { LayoutOrder = i, BackgroundTransparency = 1, ZIndex = 8, Parent = grid })
-			-- face down: a purple card with a star
-			local back = Ui.new("Frame", {
-				Size = UDim2.new(1, 0, 1, -28),
-				AnchorPoint = Vector2.new(0.5, 0),
-				Position = UDim2.fromScale(0.5, 0),
-				BackgroundColor3 = WHITE,
-				ZIndex = 8,
-				Parent = slot,
-			}, { Ui.corner(12), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(150, 90, 255), Color3.fromRGB(60, 30, 140)) })
-			Ui.icon("star", "⭐", { Size = UDim2.fromOffset(70, 70), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), MaxText = 50, ZIndex = 9, Parent = back })
-			Ui.pop(slot, i * 0.03)
-			cards[i] = { slot = slot, back = back, r = r }
+		if bestRank == 4 then
+			title.TextColor3 = WHITE
+			Ui.spin(Ui.new("UIGradient", { Color = RAINBOW, Parent = title }), 120)
 		end
-		task.wait(0.4)
-		for _, c in cards do
-			local rank = Rarities.Info[c.r.rarity].rank
-			-- flip: squash the back flat, then grow the unit card out of it
-			local t = tween(c.back, 0.12, { Size = UDim2.new(0, 0, 1, -28) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-			t.Completed:Wait()
-			c.back:Destroy()
-			local card = Ui.unitCard(c.slot, { unitId = c.r.unitId, level = 1 }, UDim2.new(1, 0, 1, -28))
-			card.AnchorPoint = Vector2.new(0.5, 0)
-			card.Position = UDim2.fromScale(0.5, 0)
-			card.Size = UDim2.new(0, 0, 1, -28)
-			tween(card, 0.16, { Size = UDim2.new(1, 0, 1, -28) }, Enum.EasingStyle.Back)
-			Ui.chip(c.r.rarity, rarityColor(c.r.rarity), { Size = UDim2.fromOffset(100, 22), Position = UDim2.new(0.5, -50, 0, -11), ZIndex = 12, Parent = card })
-			gradeRow(c.slot, c.r.grades, { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 1, -24) })
-			if rank >= 3 then
-				-- legendary and mythic cards glow and burst
-				local stroke = card:FindFirstChildWhichIsA("UIStroke") :: UIStroke
-				stroke.Color = rarityColor(c.r.rarity)
-				stroke.Thickness = 4
-				task.spawn(function()
-					while stroke.Parent do
-						tween(stroke, 0.5, { Thickness = 7 }).Completed:Wait()
-						tween(stroke, 0.5, { Thickness = 3 }).Completed:Wait()
-					end
-				end)
-				sound("rbxasset://sounds/electronicpingshort.wav", 0.7, 1.2 + rank * 0.1)
-				local pos = c.slot.AbsolutePosition + c.slot.AbsoluteSize / 2 - root.AbsoluteSize / 2
-				for _ = 1, 14 do
-					local p = Ui.new("Frame", {
-						Size = UDim2.fromOffset(10, 10),
-						AnchorPoint = Vector2.new(0.5, 0.5),
-						Position = UDim2.new(0.5, pos.X / scale.Scale, 0.5, pos.Y / scale.Scale),
-						Rotation = 45,
-						BackgroundColor3 = rarityColor(c.r.rarity),
-						BorderSizePixel = 0,
-						ZIndex = 13,
-						Parent = root,
-					})
-					local a = math.random() * math.pi * 2
-					tween(p, 0.6, { Position = p.Position + UDim2.fromOffset(math.cos(a) * 120, math.sin(a) * 120), BackgroundTransparency = 1 })
-					task.delay(0.6, function()
-						p:Destroy()
+		Ui.pop(title)
+
+		local function gradeRow(parent: Instance, grades: any, props: { [string]: any })
+			local row = Ui.new("Frame", props, { Ui.list(Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Center) })
+			row.BackgroundTransparency = 1
+			row.Parent = parent
+			local g = grades or Progression.DefaultGrades
+			for _, k in { "d", "s", "r" } do
+				Ui.gradeBadge(g[k], { Size = UDim2.fromOffset(40, 22), MaxText = 18, ZIndex = 9, Parent = row })
+			end
+			return row
+		end
+
+		if #results == 1 then
+			local r = results[1]
+			local vp = Ui.viewport(r.unitId, {
+				Size = UDim2.fromOffset(380, 380),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0.5, 0, 0.5, -20),
+				ZIndex = 8,
+				Parent = stage,
+			}, true)
+			Ui.pop(vp)
+			local name = Ui.title({
+				Text = Ui.unitName(r.unitId),
+				Size = UDim2.fromOffset(600, 50),
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(0.5, 0, 0.5, 160),
+				TextXAlignment = Enum.TextXAlignment.Center,
+				MaxText = 44,
+				Outline = 3,
+				ZIndex = 9,
+				Parent = stage,
+			})
+			Ui.pop(name, 0.1)
+			Ui.chip(r.rarity, rarityColor(r.rarity), { Size = UDim2.fromOffset(150, 28), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 212), ZIndex = 9, Parent = stage })
+			gradeRow(root, r.grades, { Size = UDim2.fromOffset(200, 24), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 248) })
+		else
+			local grid = Ui.new("Frame", {
+				Size = UDim2.fromOffset(5 * 150, 2 * 214),
+				Position = UDim2.new(0.5, 0, 0.5, 10),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundTransparency = 1,
+				ZIndex = 8,
+				Parent = stage,
+			}, {
+				Ui.new("UIGridLayout", {
+					CellSize = UDim2.fromOffset(138, 202),
+					CellPadding = UDim2.fromOffset(12, 12),
+					HorizontalAlignment = Enum.HorizontalAlignment.Center,
+					VerticalAlignment = Enum.VerticalAlignment.Center,
+					SortOrder = Enum.SortOrder.LayoutOrder,
+				}),
+			})
+			local cards = {}
+			for i, r in results do
+				local slot = Ui.new("Frame", { LayoutOrder = i, BackgroundTransparency = 1, ZIndex = 8, Parent = grid })
+				-- face down: a purple card with a star
+				local back = Ui.new("Frame", {
+					Size = UDim2.new(1, 0, 1, -28),
+					AnchorPoint = Vector2.new(0.5, 0),
+					Position = UDim2.fromScale(0.5, 0),
+					BackgroundColor3 = WHITE,
+					ZIndex = 8,
+					Parent = slot,
+				}, { Ui.corner(12), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(150, 90, 255), Color3.fromRGB(60, 30, 140)) })
+				Ui.icon("star", "⭐", { Size = UDim2.fromOffset(70, 70), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), MaxText = 50, ZIndex = 9, Parent = back })
+				Ui.pop(slot, i * 0.03)
+				cards[i] = { slot = slot, back = back, r = r }
+			end
+			task.wait(0.4)
+			for _, c in cards do
+				local rank = Rarities.Info[c.r.rarity].rank
+				-- flip: squash the back flat, then grow the unit card out of it
+				local t = tween(c.back, 0.12, { Size = UDim2.new(0, 0, 1, -28) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+				t.Completed:Wait()
+				c.back:Destroy()
+				local card = Ui.unitCard(c.slot, { unitId = c.r.unitId, level = 1 }, UDim2.new(1, 0, 1, -28))
+				card.AnchorPoint = Vector2.new(0.5, 0)
+				card.Position = UDim2.fromScale(0.5, 0)
+				card.Size = UDim2.new(0, 0, 1, -28)
+				tween(card, 0.16, { Size = UDim2.new(1, 0, 1, -28) }, Enum.EasingStyle.Back)
+				Ui.chip(c.r.rarity, rarityColor(c.r.rarity), { Size = UDim2.fromOffset(100, 22), Position = UDim2.new(0.5, -50, 0, -11), ZIndex = 12, Parent = card })
+				gradeRow(c.slot, c.r.grades, { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 1, -24) })
+				if rank >= 3 then
+					-- legendary and mythic cards glow and burst
+					local stroke = card:FindFirstChildWhichIsA("UIStroke") :: UIStroke
+					stroke.Color = rarityColor(c.r.rarity)
+					stroke.Thickness = 4
+					task.spawn(function()
+						while stroke.Parent do
+							tween(stroke, 0.5, { Thickness = 7 }).Completed:Wait()
+							tween(stroke, 0.5, { Thickness = 3 }).Completed:Wait()
+						end
 					end)
+					Audio.play(rank >= 4 and "red_coin" or "one_up", { gap = 0.05 })
+					local pos = c.slot.AbsolutePosition + c.slot.AbsoluteSize / 2 - stage.AbsolutePosition - stage.AbsoluteSize / 2
+					for _ = 1, 14 do
+						local p = Ui.new("Frame", {
+							Size = UDim2.fromOffset(10, 10),
+							AnchorPoint = Vector2.new(0.5, 0.5),
+							Position = UDim2.new(0.5, pos.X / scale.Scale, 0.5, pos.Y / scale.Scale),
+							Rotation = 45,
+							BackgroundColor3 = rarityColor(c.r.rarity),
+							BorderSizePixel = 0,
+							ZIndex = 13,
+							Parent = stage,
+						})
+						local a = math.random() * math.pi * 2
+						tween(p, 0.6, { Position = p.Position + UDim2.fromOffset(math.cos(a) * 120, math.sin(a) * 120), BackgroundTransparency = 1 })
+						task.delay(0.6, function()
+							p:Destroy()
+						end)
+					end
+					shake = 4
+					task.delay(0.15, function()
+						shake = 0
+					end)
+					task.wait(0.35)
+				else
+					Audio.play("coin", { volume = 0.5, gap = 0.03 })
+					task.wait(0.12)
 				end
-				shake = 4
-				task.delay(0.15, function()
-					shake = 0
-				end)
-				task.wait(0.35)
-			else
-				sound("rbxasset://sounds/swoosh.wav", 0.3, 1.4)
-				task.wait(0.12)
 			end
 		end
+
+	end)
+	if not revealed then
+		warn("[SummonFx] " .. tostring(revealError))
 	end
 
 	local ok = Ui.button("AWESOME!", C.green, function()
@@ -8131,8 +8436,9 @@ function SummonFx.play(results: { any }, done: () -> ())
 		end
 		tween(root, 0.2, { BackgroundTransparency = 1 })
 		gui:Destroy()
+		Audio.followBattle(Store.battle)
 		done()
-	end, { Size = UDim2.fromOffset(240, 58), Position = UDim2.new(0.5, 0, 1, -90), AnchorPoint = Vector2.new(0.5, 0), MaxText = 30, ZIndex = 14, Parent = root })
+	end, { Size = UDim2.fromOffset(240, 58), Position = UDim2.new(0.5, 0, 1, -90), AnchorPoint = Vector2.new(0.5, 0), MaxText = 30, ZIndex = 14, Parent = stage })
 	ok.Font = Ui.TitleFont
 	Ui.pop(ok)
 end
@@ -8141,7 +8447,7 @@ return SummonFx
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="33">
+        <Item class="ModuleScript" referent="34">
           <Properties>
             <string name="Name">Travel</string>
             <string name="Source"><![CDATA[-- The loading screen shown while the player is teleported between the lobby and a battle server (the server
@@ -8152,6 +8458,7 @@ local TeleportService = game:GetService("TeleportService")
 
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
+local Audio = require(script.Parent.Audio)
 
 local Travel = {}
 
@@ -8197,6 +8504,7 @@ function Travel.start()
 			current = nil
 		end
 		if text then
+			Audio.play("enter_pipe", { gap = 1 })
 			local gui = build(text)
 			gui.Parent = player:WaitForChild("PlayerGui")
 			current = gui
@@ -8230,7 +8538,7 @@ return Travel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="34">
+        <Item class="ModuleScript" referent="35">
           <Properties>
             <string name="Name">Ui</string>
             <string name="Source"><![CDATA[-- UI toolkit and the game's look: chunky outlined text, gradient buttons, gold-bannered windows, rarity unit cards,
@@ -8246,6 +8554,7 @@ local Traits = require(Shared.Traits)
 local Rarities = require(Shared.Rarities)
 local Progression = require(Shared.Progression)
 local Skins = require(script.Parent.Skins)
+local Audio = require(script.Parent.Audio)
 
 local Ui = {}
 
@@ -8467,6 +8776,7 @@ function Ui.button(text: string, color: Color3, onClick: () -> (), props: { [str
 	Ui.new("UIStroke", { Thickness = 2, Color = C.ink, ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual, Parent = button })
 	local scale = Ui.new("UIScale", { Parent = button })
 	button.MouseEnter:Connect(function()
+		Audio.play("ui_hover", { volume = 0.25, gap = 0.08, max = 1 })
 		TweenService:Create(scale, TweenInfo.new(0.1), { Scale = 1.04 }):Play()
 	end)
 	button.MouseLeave:Connect(function()
@@ -8484,6 +8794,7 @@ function Ui.button(text: string, color: Color3, onClick: () -> (), props: { [str
 			return
 		end
 		busy = true
+		Audio.play("ui_click", { volume = 0.6, max = 2 })
 		local ok, err = pcall(onClick)
 		if not ok then
 			warn(err)
@@ -8864,6 +9175,7 @@ end
 
 local toastHolder: Frame? = nil
 function Ui.toast(message: string, color: Color3?)
+	Audio.play("ui_message", { volume = 0.4, gap = 0.2, max = 1 })
 	if not toastHolder then
 		local gui = Ui.new("ScreenGui", {
 			Name = "Toasts",
@@ -8904,19 +9216,19 @@ return Ui
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="35">
+  <Item class="Workspace" referent="36">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="FilteringEnabled">true</bool>
       <bool name="NeedsPivotMigration">false</bool>
       <bool name="StreamingEnabled">false</bool>
     </Properties>
-    <Item class="Model" referent="36">
+    <Item class="Model" referent="37">
       <Properties>
         <string name="Name">Lobby</string>
         <bool name="NeedsPivotMigration">false</bool>
       </Properties>
-      <Item class="Part" referent="37">
+      <Item class="Part" referent="38">
         <Properties>
           <string name="Name">Floor</string>
           <bool name="Anchored">true</bool>
@@ -8936,7 +9248,7 @@ return Ui
           <token name="TopSurface">0</token>
         </Properties>
       </Item>
-      <Item class="SpawnLocation" referent="38">
+      <Item class="SpawnLocation" referent="39">
         <Properties>
           <string name="Name">Spawn</string>
           <bool name="Anchored">true</bool>

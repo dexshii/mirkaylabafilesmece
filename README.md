@@ -140,6 +140,7 @@ src/client/              StarterPlayerScripts.Client: lobby windows, battle HUD,
   Animator.luau          unit and enemy animations on the SM64 models
   AdminPanel.luau        the admin panel
   Travel.luau            the loading screen between servers
+  Audio.luau             music and sound effects (SM64's own, from tools/sm64_import/sm64_audio.py)
 tools/sm64_import/       makes real SM64 models from your own ROM (see its README)
 ```
 

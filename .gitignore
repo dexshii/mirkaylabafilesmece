@@ -10,3 +10,4 @@ sm64_models/
 __pycache__/
 tools/sm64_import/sm64_luau/
 *_SM64.rbxlx
+sm64_audio/

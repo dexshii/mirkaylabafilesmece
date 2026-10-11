@@ -6,6 +6,7 @@ local TeleportService = game:GetService("TeleportService")
 
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
+local Audio = require(script.Parent.Audio)
 
 local Travel = {}
 
@@ -51,6 +52,7 @@ function Travel.start()
 			current = nil
 		end
 		if text then
+			Audio.play("enter_pipe", { gap = 1 })
 			local gui = build(text)
 			gui.Parent = player:WaitForChild("PlayerGui")
 			current = gui

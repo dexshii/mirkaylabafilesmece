@@ -11,12 +11,14 @@ local Skins = require(script.Parent.Skins)
 local Animator = require(script.Parent.Animator)
 local AdminPanel = require(script.Parent.AdminPanel)
 local Travel = require(script.Parent.Travel)
+local Audio = require(script.Parent.Audio)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 end)
 
 Store.start()
+Audio.start()
 Travel.start()
 Fx.start()
 Skins.start()
@@ -36,7 +38,9 @@ local battleServer = workspace:GetAttribute("BattleServer") == true
 LobbyUI.setVisible(not battleServer)
 Store.BattleChanged:Connect(function(state)
 	LobbyUI.setVisible(not state.active and not battleServer)
+	Audio.followBattle(state)
 end)
+Audio.followBattle(Store.battle)
 
 -- scale the UI down on small screens
 local camera = workspace.CurrentCamera

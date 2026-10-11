@@ -11,6 +11,7 @@ local Rarities = require(Shared.Rarities)
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
 local Skins = require(script.Parent.Skins)
+local Audio = require(script.Parent.Audio)
 
 local AdminPanel = {}
 
@@ -128,7 +129,7 @@ function AdminPanel.start()
 		window.Visible = not window.Visible
 		if window.Visible then
 			Ui.pop(window)
-			local lines = {}
+			local lines = { Audio.status() }
 			if not Skins.available() then
 				table.insert(lines, "No SM64Models folder: this is the build without SM64 models.")
 			else

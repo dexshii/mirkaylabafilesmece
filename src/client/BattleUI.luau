@@ -16,6 +16,7 @@ local ModelFactory = require(Shared.ModelFactory)
 local Net = require(Shared.Net)
 
 local Ui = require(script.Parent.Ui)
+local Audio = require(script.Parent.Audio)
 local Store = require(script.Parent.Store)
 local Skins = require(script.Parent.Skins)
 
@@ -249,7 +250,9 @@ local function sellSelected()
 	if not selectedTower then
 		return
 	end
-	Store.call("SellTower", selectedTower:GetAttribute("TowerId"))
+	if Store.call("SellTower", selectedTower:GetAttribute("TowerId")) then
+		Audio.play("coin_spurt", { max = 2 })
+	end
 	deselect()
 end
 
@@ -568,6 +571,13 @@ local function showEnd(result)
 	end
 	cancelPlacement()
 	deselect()
+	if result.won then
+		Audio.music(nil, 0.5)
+		Audio.jingle("jingle_victory")
+		task.delay(0.6, Audio.play, "voice_yahoo", { gap = 1 })
+	else
+		Audio.play("voice_mama_mia", { gap = 1 })
+	end
 	Ui.clear(endPanel)
 	endPanel.Visible = true
 	Ui.pop(endPanel)

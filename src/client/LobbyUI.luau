@@ -17,6 +17,7 @@ local Progression = require(Shared.Progression)
 local Ui = require(script.Parent.Ui)
 local Store = require(script.Parent.Store)
 local SummonFx = require(script.Parent.SummonFx)
+local Audio = require(script.Parent.Audio)
 
 local LobbyUI = {}
 
@@ -91,6 +92,9 @@ local function setBlur(on: boolean)
 end
 
 local function open(name: string?)
+	if name ~= openName then
+		Audio.play(name and "ui_open" or "ui_close", { volume = 0.5, gap = 0.1, max = 1 })
+	end
 	setBlur(name ~= nil)
 	for n, w in windows do
 		if n == name then

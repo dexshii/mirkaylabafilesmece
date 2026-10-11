@@ -86,3 +86,36 @@ rojo build sm64.project.json -o StarKingdomDefense_SM64.rbxlx
 Open `StarKingdomDefense_SM64.rbxlx` and press Play. This works in Studio. In a published game, Roblox may only
 allow EditableMesh for ID-verified accounts. Both `sm64_luau` and the `_SM64` place file are git-ignored; don't
 share them.
+
+## Music and sounds
+
+`sm64_audio.py` renders SM64's music and sound effects from your ROM. It plays the game's own music sequences and
+its sound player with a software copy of the N64 audio engine (instruments, drums, envelopes, vibrato, pan,
+reverb). You need Python 3 with numpy, and ffmpeg for .ogg output.
+
+```
+python sm64_audio.py --rom "Super Mario 64 (USA).z64" --out sm64_audio --luau sm64_luau
+```
+
+It writes three files to `sm64_audio`:
+
+- `sm64_music_1.ogg`: Inside the Castle (lobby), Bob-omb Battlefield, Lethal Lava Land, Snowman's Land
+- `sm64_music_2.ogg`: Hazy Maze Cave, Koopa Road, the Bowser fight, the power-up theme (summons)
+- `sm64_sfx.ogg`: coins, 1-ups, stars, explosions, menu sounds, enemies, Bowser, Mario and Peach voices, jingles
+
+It also writes `Audio.luau` into `sm64_luau`, which says where each clip is in those files. Roblox limits how
+many audio files an account can upload each month, so the clips are packed into three files and the game plays
+parts of them.
+
+To hear them in game:
+
+1. Upload the three .ogg files to Roblox: Creator Hub → Creations → Development Items → Audio → Upload Asset, or
+   Studio's Asset Manager → Bulk Import.
+2. Copy each file's asset id. In Studio, select **SoundService** and add three Number attributes named
+   `sm64_music_1`, `sm64_music_2` and `sm64_sfx`, set to those ids. You can also put them in
+   `SM64Models/Audio` under `ids`.
+
+> Roblox checks uploaded audio for copyrighted material, and Nintendo's music may be rejected or get your account
+> moderated, even for a private game. Upload it at your own risk.
+
+Press M in game to mute the music. The admin panel's SM64 section shows how many clips loaded.

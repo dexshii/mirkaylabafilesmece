@@ -5,6 +5,7 @@ local Debris = game:GetService("Debris")
 
 local Net = require(game.ReplicatedStorage.Shared.Net)
 local Animator = require(script.Parent.Animator)
+local Audio = require(script.Parent.Audio)
 
 local Fx = {}
 
@@ -222,6 +223,22 @@ function Fx.start()
 	folder = Instance.new("Folder")
 	folder.Name = "ClientFx"
 	folder.Parent = workspace
+	-- sound per effect style: { clip, volume, seconds before it may play again }
+	local STYLE_SOUNDS = {
+		pop = { "enemy_die", 0.5, 0.06 },
+		placed = { "pound", 0.7, 0.1 },
+		cash = { "coin", 0.45, 0.15 },
+		leak = { "hit", 0.8, 0.3 },
+		shield = { "boing", 0.6, 0.3 },
+		shock = { "thwomp", 0.7, 0.3 },
+		summon = { "goomba_alert", 0.6, 0.4 },
+		bolt = { "throw", 0.18, 0.12 },
+		bonk = { "stomped", 0.25, 0.12 },
+		cone = { "flame", 0.2, 0.2 },
+		lob = { "explosion", 0.2, 0.25 },
+		slam = { "pound", 0.3, 0.2 },
+		zap = { "spin", 0.2, 0.12 },
+	}
 	-- the server sends each frame's effects as one list
 	Net.ev("Fx").OnClientEvent:Connect(function(list)
 		local numbers = 0
@@ -233,6 +250,13 @@ function Fx.start()
 			chainArcs(p)
 			if p.tower then
 				Animator.attack(p.tower)
+			end
+			local sfx = STYLE_SOUNDS[p.style]
+			if sfx then
+				Audio.play(sfx[1], { volume = sfx[2], gap = sfx[3], max = 3 })
+			end
+			if p.style == "pop" and p.boss then
+				Audio.play("big_explosion", { gap = 1 })
 			end
 			-- at most a few damage numbers per frame, so big fights stay smooth
 			if p.dmg and p.to and numbers < 6 then

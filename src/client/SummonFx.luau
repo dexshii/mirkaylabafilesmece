@@ -10,6 +10,8 @@ local Rarities = require(Shared.Rarities)
 local Progression = require(Shared.Progression)
 
 local Ui = require(script.Parent.Ui)
+local Audio = require(script.Parent.Audio)
+local Store = require(script.Parent.Store)
 
 local SummonFx = {}
 
@@ -20,21 +22,6 @@ local function tween(inst: Instance, t: number, goal: { [string]: any }, style: 
 	local tw = TweenService:Create(inst, TweenInfo.new(t, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), goal)
 	tw:Play()
 	return tw
-end
-
-local function sound(id: string, volume: number, pitch: number?)
-	local s = Instance.new("Sound")
-	s.SoundId = id
-	s.Volume = volume
-	s.PlaybackSpeed = pitch or 1
-	s.Parent = workspace.CurrentCamera
-	s:Play()
-	s.Ended:Once(function()
-		s:Destroy()
-	end)
-	task.delay(4, function()
-		s:Destroy()
-	end)
 end
 
 local RAINBOW = ColorSequence.new({
@@ -56,12 +43,13 @@ local function rays(parent: Instance, count: number, length: number, color: Colo
 		Parent = parent,
 	})
 	local list = {}
+	-- each ray is a line through the centre: a GuiObject rotates about its own middle
 	for i = 1, count do
 		local ray = Ui.new("Frame", {
-			Size = UDim2.fromOffset(i % 2 == 0 and 26 or 46, length),
-			AnchorPoint = Vector2.new(0.5, 1),
+			Size = UDim2.fromOffset(i % 2 == 0 and 26 or 46, length * 2),
+			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromOffset(0, 0),
-			Rotation = i / count * 360,
+			Rotation = i / count * 180,
 			BackgroundColor3 = color,
 			BackgroundTransparency = 0.55,
 			BorderSizePixel = 0,
@@ -70,7 +58,13 @@ local function rays(parent: Instance, count: number, length: number, color: Colo
 		}, {
 			Ui.new("UIGradient", {
 				Rotation = 90,
-				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.6, 0.3), NumberSequenceKeypoint.new(1, 0) }),
+				Transparency = NumberSequence.new({
+					NumberSequenceKeypoint.new(0, 1),
+					NumberSequenceKeypoint.new(0.42, 0.25),
+					NumberSequenceKeypoint.new(0.5, 0.6),
+					NumberSequenceKeypoint.new(0.58, 0.25),
+					NumberSequenceKeypoint.new(1, 1),
+				}),
 			}),
 		})
 		table.insert(list, ray)
@@ -132,13 +126,22 @@ function SummonFx.play(results: { any }, done: () -> ())
 		Rotation = 90,
 		Parent = root,
 	})
-	local scale = Ui.new("UIScale", { Parent = root })
+	-- everything but the background and rays sits on a 1280x760 stage in the middle of the screen, scaled to fit
+	local stage = Ui.new("Frame", {
+		Size = UDim2.fromOffset(1280, 760),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		BackgroundTransparency = 1,
+		ZIndex = 3,
+		Parent = root,
+	})
+	local scale = Ui.new("UIScale", { Parent = stage })
 	local cam = workspace.CurrentCamera
 	scale.Scale = math.clamp(math.min(cam.ViewportSize.X / 1280, cam.ViewportSize.Y / 760), 0.5, 1.25)
 	tween(root, 0.3, { BackgroundTransparency = 0 })
 
 	local connections: { RBXScriptConnection } = {}
-	local holder, rayList = rays(root, 18, 900, WHITE, 2)
+	local holder, rayList = rays(root, 9, 1400, WHITE, 2)
 	local spinSpeed = 30
 	local shake = 0
 	table.insert(
@@ -146,9 +149,9 @@ function SummonFx.play(results: { any }, done: () -> ())
 		RunService.RenderStepped:Connect(function(dt)
 			holder.Rotation += spinSpeed * dt
 			if shake > 0 then
-				root.Position = UDim2.fromOffset(math.random(-shake, shake), math.random(-shake, shake))
+				stage.Position = UDim2.new(0.5, math.random(-shake, shake), 0.5, math.random(-shake, shake))
 			else
-				root.Position = UDim2.new()
+				stage.Position = UDim2.fromScale(0.5, 0.5)
 			end
 		end)
 	)
@@ -172,9 +175,9 @@ function SummonFx.play(results: { any }, done: () -> ())
 		BackgroundColor3 = WHITE,
 		BackgroundTransparency = 0.6,
 		ZIndex = 3,
-		Parent = root,
+		Parent = stage,
 	}, { Ui.round() })
-	local star = Ui.icon("star", "⭐", { Size = UDim2.fromOffset(190, 190), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), MaxText = 150, ZIndex = 4, Parent = root })
+	local star = Ui.icon("star", "⭐", { Size = UDim2.fromOffset(190, 190), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), MaxText = 150, ZIndex = 4, Parent = stage })
 	local starScale = Ui.new("UIScale", { Scale = 0.1, Parent = star })
 	tween(starScale, 0.5, { Scale = 1 }, Enum.EasingStyle.Back)
 	local caption = Ui.title({
@@ -186,7 +189,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 		MaxText = 40,
 		Outline = 3,
 		ZIndex = 5,
-		Parent = root,
+		Parent = stage,
 	})
 	Ui.text({
 		Text = "click to skip",
@@ -197,7 +200,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 		TextColor3 = C.muted,
 		MaxText = 18,
 		ZIndex = 5,
-		Parent = root,
+		Parent = stage,
 	})
 
 	local skipped = false
@@ -213,7 +216,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 	end
 
 	-- the build-up: each stage the pull reaches turns the rays and glow a rarer colour
-	sound("rbxasset://sounds/swoosh.wav", 0.6)
+	Audio.music("music_summon", 0.4)
 	local stages = {
 		{ rank = 1, color = Color3.fromRGB(230, 230, 255), text = "SUMMONING..." },
 		{ rank = 2, color = rarityColor("Rare"), text = "RARE...?" },
@@ -230,7 +233,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 		caption.TextColor3 = st.color
 		Ui.pop(caption)
 		burst(root, st.color, 10 + i * 8, 4)
-		sound("rbxasset://sounds/electronicpingshort.wav", 0.5, 0.8 + i * 0.15)
+		Audio.play("power_meter", { pitch = 0.9 + i * 0.12, gap = 0.1 })
 		spinSpeed = 30 + i * 50
 		shake = (i - 1) * 3
 		tween(star, 0.6, { Rotation = star.Rotation + 360 }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
@@ -248,155 +251,166 @@ function SummonFx.play(results: { any }, done: () -> ())
 		flash:Destroy()
 	end)
 	burst(root, rarityColor(best.rarity), 40, 6)
-	sound("rbxasset://sounds/electronicpingshort.wav", 0.8, 1.6)
+	Audio.play("star_appears", { volume = 1 })
+	if bestRank >= 4 then
+		task.delay(0.4, Audio.play, "voice_yahoo", { gap = 1 })
+	elseif bestRank == 3 then
+		task.delay(0.4, Audio.play, "voice_yippee", { gap = 1 })
+	end
 	star:Destroy()
 	glow:Destroy()
 	caption:Destroy()
 	spinSpeed = 18
 	colorRays(rarityColor(best.rarity), bestRank == 4)
 
-	-- reveal
-	local banner = ({ "NICE PULL!", "RARE PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
-	local title = Ui.title({
-		Text = banner,
-		Size = UDim2.fromOffset(700, 70),
-		Position = UDim2.new(0.5, 0, 0.5, -280),
-		AnchorPoint = Vector2.new(0.5, 0),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextColor3 = rarityColor(best.rarity),
-		MaxText = 64,
-		Outline = 4,
-		ZIndex = 8,
-		Parent = root,
-	})
-	if bestRank == 4 then
-		title.TextColor3 = WHITE
-		Ui.spin(Ui.new("UIGradient", { Color = RAINBOW, Parent = title }), 120)
-	end
-	Ui.pop(title)
-
-	local function gradeRow(parent: Instance, grades: any, props: { [string]: any })
-		local row = Ui.new("Frame", props, { Ui.list(Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Center) })
-		row.BackgroundTransparency = 1
-		row.Parent = parent
-		local g = grades or Progression.DefaultGrades
-		for _, k in { "d", "s", "r" } do
-			Ui.gradeBadge(g[k], { Size = UDim2.fromOffset(40, 22), MaxText = 18, ZIndex = 9, Parent = row })
-		end
-		return row
-	end
-
-	if #results == 1 then
-		local r = results[1]
-		local vp = Ui.viewport(r.unitId, {
-			Size = UDim2.fromOffset(380, 380),
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.5, -20),
-			ZIndex = 8,
-			Parent = root,
-		}, true)
-		Ui.pop(vp)
-		local name = Ui.title({
-			Text = Ui.unitName(r.unitId),
-			Size = UDim2.fromOffset(600, 50),
+	-- reveal (whatever goes wrong in it, the close button below still appears)
+	local revealed, revealError = pcall(function()
+		local banner = ({ "NICE PULL!", "RARE PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
+		local title = Ui.title({
+			Text = banner,
+			Size = UDim2.fromOffset(700, 70),
+			Position = UDim2.new(0.5, 0, 0.5, -280),
 			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0.5, 160),
 			TextXAlignment = Enum.TextXAlignment.Center,
-			MaxText = 44,
-			Outline = 3,
-			ZIndex = 9,
-			Parent = root,
-		})
-		Ui.pop(name, 0.1)
-		Ui.chip(r.rarity, rarityColor(r.rarity), { Size = UDim2.fromOffset(150, 28), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 212), ZIndex = 9, Parent = root })
-		gradeRow(root, r.grades, { Size = UDim2.fromOffset(200, 24), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 248) })
-	else
-		local grid = Ui.new("Frame", {
-			Size = UDim2.fromOffset(5 * 150, 2 * 214),
-			Position = UDim2.new(0.5, 0, 0.5, 10),
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundTransparency = 1,
+			TextColor3 = rarityColor(best.rarity),
+			MaxText = 64,
+			Outline = 4,
 			ZIndex = 8,
-			Parent = root,
-		}, {
-			Ui.new("UIGridLayout", {
-				CellSize = UDim2.fromOffset(138, 202),
-				CellPadding = UDim2.fromOffset(12, 12),
-				HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				VerticalAlignment = Enum.VerticalAlignment.Center,
-				SortOrder = Enum.SortOrder.LayoutOrder,
-			}),
+			Parent = stage,
 		})
-		local cards = {}
-		for i, r in results do
-			local slot = Ui.new("Frame", { LayoutOrder = i, BackgroundTransparency = 1, ZIndex = 8, Parent = grid })
-			-- face down: a purple card with a star
-			local back = Ui.new("Frame", {
-				Size = UDim2.new(1, 0, 1, -28),
-				AnchorPoint = Vector2.new(0.5, 0),
-				Position = UDim2.fromScale(0.5, 0),
-				BackgroundColor3 = WHITE,
-				ZIndex = 8,
-				Parent = slot,
-			}, { Ui.corner(12), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(150, 90, 255), Color3.fromRGB(60, 30, 140)) })
-			Ui.icon("star", "⭐", { Size = UDim2.fromOffset(70, 70), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), MaxText = 50, ZIndex = 9, Parent = back })
-			Ui.pop(slot, i * 0.03)
-			cards[i] = { slot = slot, back = back, r = r }
+		if bestRank == 4 then
+			title.TextColor3 = WHITE
+			Ui.spin(Ui.new("UIGradient", { Color = RAINBOW, Parent = title }), 120)
 		end
-		task.wait(0.4)
-		for _, c in cards do
-			local rank = Rarities.Info[c.r.rarity].rank
-			-- flip: squash the back flat, then grow the unit card out of it
-			local t = tween(c.back, 0.12, { Size = UDim2.new(0, 0, 1, -28) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-			t.Completed:Wait()
-			c.back:Destroy()
-			local card = Ui.unitCard(c.slot, { unitId = c.r.unitId, level = 1 }, UDim2.new(1, 0, 1, -28))
-			card.AnchorPoint = Vector2.new(0.5, 0)
-			card.Position = UDim2.fromScale(0.5, 0)
-			card.Size = UDim2.new(0, 0, 1, -28)
-			tween(card, 0.16, { Size = UDim2.new(1, 0, 1, -28) }, Enum.EasingStyle.Back)
-			Ui.chip(c.r.rarity, rarityColor(c.r.rarity), { Size = UDim2.fromOffset(100, 22), Position = UDim2.new(0.5, -50, 0, -11), ZIndex = 12, Parent = card })
-			gradeRow(c.slot, c.r.grades, { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 1, -24) })
-			if rank >= 3 then
-				-- legendary and mythic cards glow and burst
-				local stroke = card:FindFirstChildWhichIsA("UIStroke") :: UIStroke
-				stroke.Color = rarityColor(c.r.rarity)
-				stroke.Thickness = 4
-				task.spawn(function()
-					while stroke.Parent do
-						tween(stroke, 0.5, { Thickness = 7 }).Completed:Wait()
-						tween(stroke, 0.5, { Thickness = 3 }).Completed:Wait()
-					end
-				end)
-				sound("rbxasset://sounds/electronicpingshort.wav", 0.7, 1.2 + rank * 0.1)
-				local pos = c.slot.AbsolutePosition + c.slot.AbsoluteSize / 2 - root.AbsoluteSize / 2
-				for _ = 1, 14 do
-					local p = Ui.new("Frame", {
-						Size = UDim2.fromOffset(10, 10),
-						AnchorPoint = Vector2.new(0.5, 0.5),
-						Position = UDim2.new(0.5, pos.X / scale.Scale, 0.5, pos.Y / scale.Scale),
-						Rotation = 45,
-						BackgroundColor3 = rarityColor(c.r.rarity),
-						BorderSizePixel = 0,
-						ZIndex = 13,
-						Parent = root,
-					})
-					local a = math.random() * math.pi * 2
-					tween(p, 0.6, { Position = p.Position + UDim2.fromOffset(math.cos(a) * 120, math.sin(a) * 120), BackgroundTransparency = 1 })
-					task.delay(0.6, function()
-						p:Destroy()
+		Ui.pop(title)
+
+		local function gradeRow(parent: Instance, grades: any, props: { [string]: any })
+			local row = Ui.new("Frame", props, { Ui.list(Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Center) })
+			row.BackgroundTransparency = 1
+			row.Parent = parent
+			local g = grades or Progression.DefaultGrades
+			for _, k in { "d", "s", "r" } do
+				Ui.gradeBadge(g[k], { Size = UDim2.fromOffset(40, 22), MaxText = 18, ZIndex = 9, Parent = row })
+			end
+			return row
+		end
+
+		if #results == 1 then
+			local r = results[1]
+			local vp = Ui.viewport(r.unitId, {
+				Size = UDim2.fromOffset(380, 380),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0.5, 0, 0.5, -20),
+				ZIndex = 8,
+				Parent = stage,
+			}, true)
+			Ui.pop(vp)
+			local name = Ui.title({
+				Text = Ui.unitName(r.unitId),
+				Size = UDim2.fromOffset(600, 50),
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(0.5, 0, 0.5, 160),
+				TextXAlignment = Enum.TextXAlignment.Center,
+				MaxText = 44,
+				Outline = 3,
+				ZIndex = 9,
+				Parent = stage,
+			})
+			Ui.pop(name, 0.1)
+			Ui.chip(r.rarity, rarityColor(r.rarity), { Size = UDim2.fromOffset(150, 28), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 212), ZIndex = 9, Parent = stage })
+			gradeRow(root, r.grades, { Size = UDim2.fromOffset(200, 24), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 248) })
+		else
+			local grid = Ui.new("Frame", {
+				Size = UDim2.fromOffset(5 * 150, 2 * 214),
+				Position = UDim2.new(0.5, 0, 0.5, 10),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundTransparency = 1,
+				ZIndex = 8,
+				Parent = stage,
+			}, {
+				Ui.new("UIGridLayout", {
+					CellSize = UDim2.fromOffset(138, 202),
+					CellPadding = UDim2.fromOffset(12, 12),
+					HorizontalAlignment = Enum.HorizontalAlignment.Center,
+					VerticalAlignment = Enum.VerticalAlignment.Center,
+					SortOrder = Enum.SortOrder.LayoutOrder,
+				}),
+			})
+			local cards = {}
+			for i, r in results do
+				local slot = Ui.new("Frame", { LayoutOrder = i, BackgroundTransparency = 1, ZIndex = 8, Parent = grid })
+				-- face down: a purple card with a star
+				local back = Ui.new("Frame", {
+					Size = UDim2.new(1, 0, 1, -28),
+					AnchorPoint = Vector2.new(0.5, 0),
+					Position = UDim2.fromScale(0.5, 0),
+					BackgroundColor3 = WHITE,
+					ZIndex = 8,
+					Parent = slot,
+				}, { Ui.corner(12), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(150, 90, 255), Color3.fromRGB(60, 30, 140)) })
+				Ui.icon("star", "⭐", { Size = UDim2.fromOffset(70, 70), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), MaxText = 50, ZIndex = 9, Parent = back })
+				Ui.pop(slot, i * 0.03)
+				cards[i] = { slot = slot, back = back, r = r }
+			end
+			task.wait(0.4)
+			for _, c in cards do
+				local rank = Rarities.Info[c.r.rarity].rank
+				-- flip: squash the back flat, then grow the unit card out of it
+				local t = tween(c.back, 0.12, { Size = UDim2.new(0, 0, 1, -28) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+				t.Completed:Wait()
+				c.back:Destroy()
+				local card = Ui.unitCard(c.slot, { unitId = c.r.unitId, level = 1 }, UDim2.new(1, 0, 1, -28))
+				card.AnchorPoint = Vector2.new(0.5, 0)
+				card.Position = UDim2.fromScale(0.5, 0)
+				card.Size = UDim2.new(0, 0, 1, -28)
+				tween(card, 0.16, { Size = UDim2.new(1, 0, 1, -28) }, Enum.EasingStyle.Back)
+				Ui.chip(c.r.rarity, rarityColor(c.r.rarity), { Size = UDim2.fromOffset(100, 22), Position = UDim2.new(0.5, -50, 0, -11), ZIndex = 12, Parent = card })
+				gradeRow(c.slot, c.r.grades, { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 1, -24) })
+				if rank >= 3 then
+					-- legendary and mythic cards glow and burst
+					local stroke = card:FindFirstChildWhichIsA("UIStroke") :: UIStroke
+					stroke.Color = rarityColor(c.r.rarity)
+					stroke.Thickness = 4
+					task.spawn(function()
+						while stroke.Parent do
+							tween(stroke, 0.5, { Thickness = 7 }).Completed:Wait()
+							tween(stroke, 0.5, { Thickness = 3 }).Completed:Wait()
+						end
 					end)
+					Audio.play(rank >= 4 and "red_coin" or "one_up", { gap = 0.05 })
+					local pos = c.slot.AbsolutePosition + c.slot.AbsoluteSize / 2 - stage.AbsolutePosition - stage.AbsoluteSize / 2
+					for _ = 1, 14 do
+						local p = Ui.new("Frame", {
+							Size = UDim2.fromOffset(10, 10),
+							AnchorPoint = Vector2.new(0.5, 0.5),
+							Position = UDim2.new(0.5, pos.X / scale.Scale, 0.5, pos.Y / scale.Scale),
+							Rotation = 45,
+							BackgroundColor3 = rarityColor(c.r.rarity),
+							BorderSizePixel = 0,
+							ZIndex = 13,
+							Parent = stage,
+						})
+						local a = math.random() * math.pi * 2
+						tween(p, 0.6, { Position = p.Position + UDim2.fromOffset(math.cos(a) * 120, math.sin(a) * 120), BackgroundTransparency = 1 })
+						task.delay(0.6, function()
+							p:Destroy()
+						end)
+					end
+					shake = 4
+					task.delay(0.15, function()
+						shake = 0
+					end)
+					task.wait(0.35)
+				else
+					Audio.play("coin", { volume = 0.5, gap = 0.03 })
+					task.wait(0.12)
 				end
-				shake = 4
-				task.delay(0.15, function()
-					shake = 0
-				end)
-				task.wait(0.35)
-			else
-				sound("rbxasset://sounds/swoosh.wav", 0.3, 1.4)
-				task.wait(0.12)
 			end
 		end
+
+	end)
+	if not revealed then
+		warn("[SummonFx] " .. tostring(revealError))
 	end
 
 	local ok = Ui.button("AWESOME!", C.green, function()
@@ -405,8 +419,9 @@ function SummonFx.play(results: { any }, done: () -> ())
 		end
 		tween(root, 0.2, { BackgroundTransparency = 1 })
 		gui:Destroy()
+		Audio.followBattle(Store.battle)
 		done()
-	end, { Size = UDim2.fromOffset(240, 58), Position = UDim2.new(0.5, 0, 1, -90), AnchorPoint = Vector2.new(0.5, 0), MaxText = 30, ZIndex = 14, Parent = root })
+	end, { Size = UDim2.fromOffset(240, 58), Position = UDim2.new(0.5, 0, 1, -90), AnchorPoint = Vector2.new(0.5, 0), MaxText = 30, ZIndex = 14, Parent = stage })
 	ok.Font = Ui.TitleFont
 	Ui.pop(ok)
 end

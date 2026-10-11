@@ -11,6 +11,7 @@ local Traits = require(Shared.Traits)
 local Rarities = require(Shared.Rarities)
 local Progression = require(Shared.Progression)
 local Skins = require(script.Parent.Skins)
+local Audio = require(script.Parent.Audio)
 
 local Ui = {}
 
@@ -232,6 +233,7 @@ function Ui.button(text: string, color: Color3, onClick: () -> (), props: { [str
 	Ui.new("UIStroke", { Thickness = 2, Color = C.ink, ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual, Parent = button })
 	local scale = Ui.new("UIScale", { Parent = button })
 	button.MouseEnter:Connect(function()
+		Audio.play("ui_hover", { volume = 0.25, gap = 0.08, max = 1 })
 		TweenService:Create(scale, TweenInfo.new(0.1), { Scale = 1.04 }):Play()
 	end)
 	button.MouseLeave:Connect(function()
@@ -249,6 +251,7 @@ function Ui.button(text: string, color: Color3, onClick: () -> (), props: { [str
 			return
 		end
 		busy = true
+		Audio.play("ui_click", { volume = 0.6, max = 2 })
 		local ok, err = pcall(onClick)
 		if not ok then
 			warn(err)
@@ -629,6 +632,7 @@ end
 
 local toastHolder: Frame? = nil
 function Ui.toast(message: string, color: Color3?)
+	Audio.play("ui_message", { volume = 0.4, gap = 0.2, max = 1 })
 	if not toastHolder then
 		local gui = Ui.new("ScreenGui", {
 			Name = "Toasts",
