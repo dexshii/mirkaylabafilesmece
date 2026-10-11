@@ -519,8 +519,9 @@ end
 -- ============================================================ Units
 
 local unitSearch = ""
+local unitCards: { [string]: { card: TextButton, sig: string } } = {}
 local unitFilter = "All"
-local FILTERS = { "All", "Mythic", "Legendary", "Rare", "Common", "Team", "Locked" }
+local FILTERS = { "All", "Mythic", "Legendary", "Epic", "Rare", "Common", "Team", "Locked" }
 
 -- a square icon button for the column beside the unit details
 local function iconButton(parent: Instance, icon: string, color: Color3, order: number, onClick: () -> ())
@@ -614,24 +615,53 @@ local function buildUnits()
 			selectedUnit = all[1].uid
 		end
 		countChip:FindFirstChildWhichIsA("TextLabel").Text = #all .. "/" .. Units.InventoryLimit
-		Ui.clear(grid)
+		-- cards are kept per unit and only rebuilt when what they show changes; a card that is filtered out is
+		-- just taken off the grid, so clicking, searching and filtering stay instant
+		local shown = {}
 		for i, e in list do
 			local slot = onTeam(data, e.uid)
-			local card = Ui.unitCard(grid, {
-				unitId = e.u,
-				level = e.l,
-				trait = e.t,
-				price = Stats.placeCost(e.u, e.t),
-				selected = e.uid == selectedUnit,
-				badge = slot and ("TEAM " .. slot) or nil,
-			}, UDim2.new(), function()
-				selectedUnit = e.uid
-				equipMode = false
-				refreshers.Units()
-			end)
-			card.LayoutOrder = i
-			if data.units[e.uid].k then
-				Ui.text({ Text = "🔒", Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, -24, 0, 26), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 16, Outline = 0, ZIndex = 6, Parent = card })
+			local locked = data.units[e.uid].k == true
+			local sig = table.concat({ e.u, tostring(e.l), e.t or "", tostring(slot), tostring(locked) }, "|")
+			local cached = unitCards[e.uid]
+			if not cached or cached.sig ~= sig then
+				if cached then
+					cached.card:Destroy()
+				end
+				local uid = e.uid
+				local card = Ui.unitCard(grid, {
+					unitId = e.u,
+					level = e.l,
+					trait = e.t,
+					price = Stats.placeCost(e.u, e.t),
+					badge = slot and ("TEAM " .. slot) or nil,
+				}, UDim2.new(), function()
+					local old = selectedUnit and unitCards[selectedUnit]
+					if old then
+						Ui.setCardSelected(old.card, false)
+					end
+					selectedUnit = uid
+					equipMode = false
+					refreshers.Units()
+				end)
+				if locked then
+					Ui.icon("lock", "🔒", { Size = UDim2.fromOffset(22, 22), Position = UDim2.new(1, -26, 0, 24), MaxText = 16, ZIndex = 6, Parent = card })
+				end
+				cached = { card = card, sig = sig }
+				unitCards[e.uid] = cached
+			end
+			cached.card.Parent = grid
+			cached.card.LayoutOrder = i
+			Ui.setCardSelected(cached.card, e.uid == selectedUnit)
+			shown[e.uid] = true
+		end
+		for uid, cached in unitCards do
+			if not shown[uid] then
+				if data.units[uid] then
+					cached.card.Parent = nil
+				else
+					cached.card:Destroy()
+					unitCards[uid] = nil
+				end
 			end
 		end
 
@@ -824,21 +854,46 @@ local function buildTraits()
 		Parent = content,
 	}, { Ui.list(Enum.FillDirection.Vertical, 6), Ui.padding(6) })
 
-	-- the trait index never changes
-	local order = 0
-	for i = #Rarities.Order, 1, -1 do
-		local r = Rarities.Order[i]
-		order += 1
-		Ui.chip(string.format("%s  %s%%", r, tostring(Rarities.TraitRates[r])), rarityColor(r), { Size = UDim2.new(1, -10, 0, 30), LayoutOrder = order, Parent = index })
-		for _, t in Traits.ByRarity[r] do
-			order += 1
-			local row = Ui.new("Frame", { Size = UDim2.new(1, -10, 0, 46), BackgroundColor3 = C.panelDark, BackgroundTransparency = 0.2, LayoutOrder = order, Parent = index }, { Ui.corner(8) })
-			Ui.text({ Text = t.name, Size = UDim2.new(1, -12, 0, 20), Position = UDim2.fromOffset(8, 3), TextColor3 = Ui.lighten(rarityColor(r), 0.2), MaxText = 16, Parent = row })
-			Ui.text({ Text = t.desc, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(8, 25), TextColor3 = C.muted, MaxText = 13, Outline = 1, Parent = row })
+	-- the trait index: every trait with its own chance, rarest first, and the pity counters for the rainbow ones
+	local pityLabels: { [string]: TextLabel } = {}
+	for i, t in Traits.List do
+		local color = rarityColor(t.rarity)
+		local row = Ui.new("Frame", {
+			Size = UDim2.new(1, -10, 0, 58),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			LayoutOrder = i,
+			Parent = index,
+		}, { Ui.corner(10), Ui.stroke(Ui.darken(color, 0.2), 2), Ui.gradient(Ui.darken(color, 0.55), Color3.fromRGB(16, 12, 30), 90) })
+		if t.rarity == "Mythic" then
+			local g = Ui.new("UIGradient", {
+				Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 90)),
+					ColorSequenceKeypoint.new(0.33, Color3.fromRGB(255, 220, 80)),
+					ColorSequenceKeypoint.new(0.66, Color3.fromRGB(90, 220, 140)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 110, 255)),
+				}),
+			})
+			local name = Ui.text({ Text = t.name, Size = UDim2.new(1, -90, 0, 22), Position = UDim2.fromOffset(10, 4), MaxText = 18, Parent = row })
+			g.Parent = name
+			Ui.spin(g, 90)
+		else
+			Ui.text({ Text = t.name, Size = UDim2.new(1, -90, 0, 22), Position = UDim2.fromOffset(10, 4), TextColor3 = Ui.lighten(color, 0.25), MaxText = 18, Parent = row })
+		end
+		Ui.text({ Text = t.desc, Size = UDim2.new(1, -20, 0, 26), Position = UDim2.fromOffset(10, 28), TextColor3 = C.muted, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, MaxText = 13, Outline = 1, Parent = row })
+		Ui.text({ Text = tostring(t.chance) .. "%", Size = UDim2.fromOffset(74, 22), Position = UDim2.new(1, -82, 0, 4), TextXAlignment = Enum.TextXAlignment.Right, MaxText = 18, Parent = row })
+		if t.pity then
+			pityLabels[t.id] = Ui.text({ Text = "", Size = UDim2.fromOffset(120, 16), Position = UDim2.new(1, -128, 1, -18), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = C.gold, MaxText = 13, Parent = row })
+		end
+	end
+	local function refreshPity()
+		local pity = Store.data and Store.data.traitPity or {}
+		for id, label in pityLabels do
+			label.Text = string.format("Pity: %d/%d", pity[id] or 0, Traits.ById[id].pity)
 		end
 	end
 
 	refreshers.Traits = function()
+		refreshPity()
 		local data = Store.data
 		local list = entries(data)
 		if traitUnit and not data.units[traitUnit] then
@@ -863,7 +918,12 @@ local function buildTraits()
 				Ui.stroke(e.uid == traitUnit and Color3.new(1, 1, 1) or C.ink, e.uid == traitUnit and 3 or 2),
 				Ui.gradient(Ui.RarityGradient[def.rarity][1], Ui.RarityGradient[def.rarity][2], 0),
 			})
-			Ui.viewport(e.u, { Size = UDim2.fromOffset(58, 58), Position = UDim2.fromOffset(2, 2) }).Parent = row
+			local unitId = e.u
+			Ui.later(function()
+				if row.Parent then
+					Ui.viewport(unitId, { Size = UDim2.fromOffset(58, 58), Position = UDim2.fromOffset(2, 2) }).Parent = row
+				end
+			end)
 			Ui.text({ Text = Ui.unitName(e.u) .. "  Lvl " .. e.l, Size = UDim2.new(1, -70, 0, 22), Position = UDim2.fromOffset(64, 6), MaxText = 16, Parent = row })
 			Ui.text({
 				Text = trait and trait.name or "no trait",
@@ -918,7 +978,7 @@ local function buildTraits()
 		local rollButton
 		rollButton = Ui.button("ROLL TRAIT  🔮" .. Traits.RollCost, C.purple, function()
 			-- rolling replaces the current trait: confirm before throwing away a Legendary or Mythic one
-			if trait and Rarities.Info[trait.rarity].rank >= 3 and not confirming then
+			if trait and Rarities.Info[trait.rarity].rank >= Rarities.Info.Legendary.rank and not confirming then
 				confirming = true
 				rollButton.Text = "Replace " .. trait.name .. "? Tap again"
 				task.delay(3, function()

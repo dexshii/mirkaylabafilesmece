@@ -42,6 +42,7 @@ local C = Ui.Colors
 Ui.RarityGradient = {
 	Common = { Color3.fromRGB(196, 202, 212), Color3.fromRGB(96, 102, 118) },
 	Rare = { Color3.fromRGB(100, 185, 255), Color3.fromRGB(28, 72, 196) },
+	Epic = { Color3.fromRGB(196, 140, 255), Color3.fromRGB(96, 34, 196) },
 	Legendary = { Color3.fromRGB(255, 222, 80), Color3.fromRGB(232, 112, 16) },
 	Mythic = { Color3.fromRGB(255, 96, 150), Color3.fromRGB(176, 18, 74) },
 }
@@ -441,6 +442,30 @@ end
 
 -- ============================================================ unit cards and stats
 
+-- work spread over frames: at most a few jobs per frame (building viewport models is the slow part)
+local laterQueue: { () -> () } = {}
+RunService.Heartbeat:Connect(function()
+	for _ = 1, math.min(4, #laterQueue) do
+		local job = table.remove(laterQueue, 1)
+		local ok, err = pcall(job :: () -> ())
+		if not ok then
+			warn(err)
+		end
+	end
+end)
+function Ui.later(job: () -> ())
+	table.insert(laterQueue, job)
+end
+
+-- marks a unit card made by Ui.unitCard as selected or not
+function Ui.setCardSelected(card: GuiObject, selected: boolean)
+	local stroke = card:FindFirstChildWhichIsA("UIStroke")
+	if stroke then
+		stroke.Color = selected and Color3.new(1, 1, 1) or C.ink
+		stroke.Thickness = selected and 4 or 3
+	end
+end
+
 function Ui.unitName(unitId: string): string
 	return Skins.displayName(unitId) or ModelFactory.displayName(unitId, Units.ById[unitId].name)
 end
@@ -553,7 +578,12 @@ function Ui.unitCard(parent: Instance, info: CardInfo, size: UDim2, onClick: (()
 		BackgroundTransparency = 0.82,
 		Parent = card,
 	}, { Ui.corner(9) })
-	Ui.viewport(info.unitId, { Size = UDim2.new(1, 0, 1, -12), Position = UDim2.fromOffset(0, 2), ZIndex = 2, Parent = card })
+	-- the model preview is built a moment later (a few per frame), so big grids open without freezing
+	Ui.later(function()
+		if card.Parent then
+			Ui.viewport(info.unitId, { Size = UDim2.new(1, 0, 1, -12), Position = UDim2.fromOffset(0, 2), ZIndex = 2, Parent = card })
+		end
+	end)
 	-- name strip
 	local strip = Ui.new("Frame", {
 		Size = UDim2.new(1, -6, 0, 20),

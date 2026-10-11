@@ -38,6 +38,14 @@ This writes one model per game id into `sm64_models`:
 | captaincomet | Mario | shadowmonarch | Bowser |
 | infernodrake | Bowser | | |
 | starprincess | Princess Peach | | |
+| webskitter | Scuttlebug | | |
+| puffshot | Snufit | | |
+| crusherblock | Thwomp | | |
+| voltorb | Amp | | |
+| burrowbomber | Monty Mole | | |
+| bananabandit | Ukiki | | |
+| grapplebot | Chuckya | | |
+| dinopal | Yoshi | | |
 
 Each model comes as `<id>.glb` (texture included) and as `<id>.obj` + `.mtl` + `.png`. There's also
 `set_names.lua`.

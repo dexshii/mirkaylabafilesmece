@@ -19,6 +19,10 @@ export type Computed = {
 	slow: { pct: number, dur: number }?,
 	burn: { dps: number, dur: number }?,
 	stun: { chance: number, dur: number }?,
+	execute: number,
+	critChance: number,
+	critDamage: number,
+	dotMult: number,
 	chain: number,
 }
 
@@ -36,7 +40,7 @@ function Stats.compute(unitId: string, level: number, traitId: string?, buffs: {
 
 	local damage = def.damage * (1 + 0.30 * level) * (1 + (t.damage or 0) + (b.damage or 0)) * Progression.levelDamage(u.l) * (gm[g.d] or 1)
 	local range = def.range * (1 + 0.06 * level) * (1 + (t.range or 0)) * (gm[g.r] or 1)
-	local cooldown = def.cooldown * (1 - 0.05 * level) / (1 + (t.speed or 0)) / (gm[g.s] or 1)
+	local cooldown = def.cooldown * (1 - 0.05 * level) * (1 - math.min(t.speed or 0, 0.8)) / (gm[g.s] or 1)
 
 	local slow = def.attack.slow
 	if t.slow and (not slow or t.slow.pct > slow.pct) then
@@ -62,12 +66,26 @@ function Stats.compute(unitId: string, level: number, traitId: string?, buffs: {
 		bossMult = (def.attack.bossMult or 1) * (1 + (t.bossDamage or 0)),
 		cashMult = 1 + (t.cash or 0),
 		costMult = 1 - (t.cost or 0),
-		farm = (def.farm or 0) * (1 + 0.5 * level) + (t.waveCash or 0),
+		farm = (def.farm or 0) * (1 + 0.5 * level) * (1 + (t.farm or 0)) + (t.waveCash or 0),
 		slow = slow,
 		burn = burn,
 		stun = stun,
+		-- chance per hit to defeat a non-boss enemy outright
+		execute = def.attack.execute or 0,
+		critChance = t.crit and t.crit.chance or 0,
+		critDamage = 1.5 + (t.crit and t.crit.damage or 0),
+		dotMult = 1 + (t.dot or 0),
 		chain = (def.attack.chain or 0) + (t.chain or 0),
 	}
+end
+
+-- how many of a unit may be placed (traits like Boundless allow only one)
+function Stats.limit(unitId: string, traitId: string?): number
+	local trait = traitId and Traits.ById[traitId]
+	if trait and trait.fx.single then
+		return 1
+	end
+	return Units.ById[unitId].limit
 end
 
 function Stats.placeCost(unitId: string, traitId: string?): number

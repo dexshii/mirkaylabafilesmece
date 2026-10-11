@@ -115,7 +115,7 @@ function AdminPanel.start()
 		act("win")
 	end, { Parent = battle })
 
-	local sm64 = Ui.inset(scroll, { Size = UDim2.new(1, -12, 0, 150), LayoutOrder = 6 })
+	local sm64 = Ui.inset(scroll, { Size = UDim2.new(1, -12, 0, 220), LayoutOrder = 6 })
 	Ui.title({ Text = "🍄 SM64 models", Size = UDim2.new(1, -20, 0, 24), Position = UDim2.fromOffset(10, 6), MaxText = 20, Parent = sm64 })
 	local modeButton
 	modeButton = Ui.button("Mode: " .. Skins.mode, C.blue, function()
@@ -123,7 +123,24 @@ function AdminPanel.start()
 		modeButton.Text = "Mode: " .. Skins.mode
 		Ui.toast("SM64 models rebuilt as " .. Skins.mode, C.green)
 	end, { Size = UDim2.fromOffset(160, 32), Position = UDim2.new(1, -170, 0, 4), MaxText = 16, Parent = sm64 })
-	local status = Ui.text({ Text = "", Size = UDim2.new(1, -20, 1, -40), Position = UDim2.fromOffset(10, 40), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, MaxText = 14, Parent = sm64 })
+	-- the uploaded SM64 audio files' ids
+	local SoundService = game:GetService("SoundService")
+	local idBoxes = {}
+	for i, sheet in { "sm64_music_1", "sm64_music_2", "sm64_sfx" } do
+		local box = numberBox(sm64, tostring(SoundService:GetAttribute(sheet) or ""))
+		box.PlaceholderText = sheet .. " id"
+		box.Size = UDim2.fromOffset(170, 30)
+		box.Position = UDim2.new(0, 10 + (i - 1) * 178, 1, -40)
+		idBoxes[sheet] = box
+	end
+	Ui.button("Save audio ids", C.green, function()
+		local ids = {}
+		for sheet, box in idBoxes do
+			ids[sheet] = tonumber(box.Text:match("%d+") or "")
+		end
+		act("audioIds", ids)
+	end, { Size = UDim2.fromOffset(150, 30), Position = UDim2.new(1, -160, 1, -40), MaxText = 16, Parent = sm64 })
+	local status = Ui.text({ Text = "", Size = UDim2.new(1, -20, 1, -90), Position = UDim2.fromOffset(10, 40), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, MaxText = 14, Parent = sm64 })
 
 	local function toggle()
 		window.Visible = not window.Visible

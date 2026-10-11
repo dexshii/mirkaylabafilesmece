@@ -1,56 +1,79 @@
 -- Traits are rolled onto a unit with Trait Crystals (earned from challenges). A unit holds one trait; rolling again
--- replaces it. Effect fields (all optional):
---   damage / speed / range: +fraction (speed = attack speed, so cooldown is divided by 1 + speed)
---   cost: fraction off placement and upgrade cost        cash: +fraction cash from this unit's kills
---   bossDamage: +fraction vs bosses                      hitsAir: can target flying enemies
---   slow = {pct, dur}   burn = {dps (fraction of hit damage per second), dur}   stun = {chance, dur}
---   chain: extra enemies each attack jumps to (at 60% damage)   waveCash: cash paid at the end of each wave
+-- replaces it. Every trait has its own chance (`chance`, in percent; they add up to 100), and the rarest ones have
+-- pity: after `pity` rolls without it, the next roll gives it.
+-- Effect fields (all optional):
+--   damage / speed / range: +fraction (speed lowers SPA: the cooldown is multiplied by 1 - speed)
+--   crit = { chance, damage }: +fraction crit chance and +fraction crit damage (crits deal 150% + damage)
+--   dot: +fraction damage for burns          cost: fraction off placement and upgrade cost
+--   farm: +fraction money-farm income        xp: +fraction unit XP from battles
+--   single: only one of this unit can be placed
 local Traits = {}
 
 export type TraitDef = {
 	id: string,
 	name: string,
 	rarity: string,
+	chance: number,
+	pity: number?,
 	desc: string,
 	fx: { [string]: any },
 }
 
 local list: { TraitDef } = {
-	-- Common
-	{ id = "strong1", name = "Strong I", rarity = "Common", desc = "+8% damage", fx = { damage = 0.08 } },
-	{ id = "quick1", name = "Quick I", rarity = "Common", desc = "+8% attack speed", fx = { speed = 0.08 } },
-	{ id = "keen1", name = "Keen I", rarity = "Common", desc = "+8% range", fx = { range = 0.08 } },
-	{ id = "thrifty", name = "Thrifty", rarity = "Common", desc = "-10% placement and upgrade cost", fx = { cost = 0.10 } },
-
-	-- Rare
-	{ id = "strong2", name = "Strong II", rarity = "Rare", desc = "+18% damage", fx = { damage = 0.18 } },
-	{ id = "quick2", name = "Quick II", rarity = "Rare", desc = "+18% attack speed", fx = { speed = 0.18 } },
-	{ id = "hawkeye", name = "Hawkeye", rarity = "Rare", desc = "+20% range and can hit flying enemies", fx = { range = 0.20, hitsAir = true } },
-	{ id = "prospector", name = "Prospector", rarity = "Rare", desc = "+25% cash from this unit's kills", fx = { cash = 0.25 } },
-
-	-- Legendary
-	{ id = "titanslayer", name = "Titan Slayer", rarity = "Legendary", desc = "+60% damage to bosses", fx = { bossDamage = 0.60 } },
-	{ id = "frostbite", name = "Frostbite", rarity = "Legendary", desc = "Attacks slow enemies by 25% for 1.5s", fx = { slow = { pct = 0.25, dur = 1.5 } } },
-	{ id = "blazing", name = "Blazing", rarity = "Legendary", desc = "Attacks burn for 3s (30% of hit damage per second)", fx = { burn = { dps = 0.30, dur = 3 } } },
-	{ id = "overclock", name = "Overclock", rarity = "Legendary", desc = "+30% attack speed and +10% damage", fx = { speed = 0.30, damage = 0.10 } },
-
-	-- Mythic
+	-- rainbow (Mythic), with pity
 	{
-		id = "superstar",
-		name = "Superstar",
+		id = "boundless",
+		name = "Boundless",
 		rarity = "Mythic",
-		desc = "+50% damage, +25% attack speed, +15% range",
-		fx = { damage = 0.50, speed = 0.25, range = 0.15 },
+		chance = 0.1,
+		pity = 1500,
+		desc = "+300% damage, -5% SPA, +10% range. Only one can be placed",
+		fx = { damage = 3.0, speed = 0.05, range = 0.10, single = true },
 	},
-	{ id = "chainreaction", name = "Chain Reaction", rarity = "Mythic", desc = "Every attack chains to 2 more enemies", fx = { chain = 2 } },
-	{ id = "midas", name = "Midas Touch", rarity = "Mythic", desc = "+100% cash from kills and +100 cash every wave", fx = { cash = 1.0, waveCash = 100 } },
 	{
-		id = "timestop",
-		name = "Time Stop",
+		id = "primeval",
+		name = "Primeval",
 		rarity = "Mythic",
-		desc = "+20% damage, 12% chance per hit to stun for 1.5s",
-		fx = { damage = 0.20, stun = { chance = 0.12, dur = 1.5 } },
+		chance = 0.2,
+		pity = 750,
+		desc = "+35% damage, -15% SPA, +20% range",
+		fx = { damage = 0.35, speed = 0.15, range = 0.20 },
 	},
+	{
+		id = "forsworn",
+		name = "Forsworn",
+		rarity = "Mythic",
+		chance = 0.3,
+		pity = 500,
+		desc = "+35% crit damage, +35% crit chance, +10% range",
+		fx = { crit = { chance = 0.35, damage = 0.35 }, range = 0.10 },
+	},
+	{
+		id = "wyrmblood",
+		name = "Wyrmblood",
+		rarity = "Mythic",
+		chance = 0.5,
+		pity = 300,
+		desc = "+20% damage, +120% burn damage, -15% cost",
+		fx = { damage = 0.20, dot = 1.2, cost = 0.15 },
+	},
+
+	-- gold (Legendary and Epic)
+	{ id = "tycoon", name = "Tycoon", rarity = "Legendary", chance = 2, desc = "+25% money-farm income", fx = { farm = 0.25 } },
+	{ id = "farsight", name = "Farsight", rarity = "Legendary", chance = 3, desc = "+25% range", fx = { range = 0.25 } },
+	{ id = "surge", name = "Surge", rarity = "Legendary", chance = 4, desc = "-15% SPA", fx = { speed = 0.15 } },
+	{ id = "accuracy2", name = "Accuracy II", rarity = "Legendary", chance = 4, desc = "+20% crit chance, +10% crit damage", fx = { crit = { chance = 0.20, damage = 0.10 } } },
+	{ id = "accuracy1", name = "Accuracy I", rarity = "Epic", chance = 6, desc = "+10% crit chance, +5% crit damage", fx = { crit = { chance = 0.10, damage = 0.05 } } },
+	{ id = "overdrive", name = "Overdrive", rarity = "Epic", chance = 6, desc = "+15% damage", fx = { damage = 0.15 } },
+
+	-- blue (Rare and Common)
+	{ id = "reach2", name = "Reach II", rarity = "Rare", chance = 7, desc = "+10% range", fx = { range = 0.10 } },
+	{ id = "swift2", name = "Swift II", rarity = "Rare", chance = 7, desc = "-10% SPA", fx = { speed = 0.10 } },
+	{ id = "power2", name = "Power II", rarity = "Rare", chance = 7, desc = "+10% damage", fx = { damage = 0.10 } },
+	{ id = "wisdom", name = "Wisdom", rarity = "Rare", chance = 9, desc = "+50% unit XP", fx = { xp = 0.50 } },
+	{ id = "reach1", name = "Reach I", rarity = "Common", chance = 14.63, desc = "+5% range", fx = { range = 0.05 } },
+	{ id = "swift1", name = "Swift I", rarity = "Common", chance = 14.63, desc = "-5% SPA", fx = { speed = 0.05 } },
+	{ id = "power1", name = "Power I", rarity = "Common", chance = 14.64, desc = "+5% damage", fx = { damage = 0.05 } },
 }
 
 Traits.List = list
@@ -62,6 +85,59 @@ for _, def in list do
 	table.insert(Traits.ByRarity[def.rarity], def)
 end
 
+-- traits from before this list, as the trait each one becomes
+Traits.Legacy = {
+	strong1 = "power1",
+	quick1 = "swift1",
+	keen1 = "reach1",
+	thrifty = "power1",
+	strong2 = "power2",
+	quick2 = "swift2",
+	hawkeye = "reach2",
+	prospector = "tycoon",
+	strong3 = "overdrive",
+	quick3 = "surge",
+	eagleeye = "farsight",
+	bounty = "tycoon",
+	titanslayer = "accuracy2",
+	frostbite = "overdrive",
+	blazing = "accuracy2",
+	overclock = "surge",
+	superstar = "primeval",
+	chainreaction = "forsworn",
+	midas = "wyrmblood",
+	timestop = "forsworn",
+}
+
 Traits.RollCost = 1 -- trait crystals per roll
+
+-- rolls a trait. pity: rolls since each pity trait was last rolled (updated in place)
+function Traits.roll(rng: Random, pity: { [string]: number }): TraitDef
+	-- a pity trait whose counter is full comes first, the rarest one if several are
+	local forced: TraitDef? = nil
+	for _, def in list do
+		if def.pity and (pity[def.id] or 0) + 1 >= def.pity and (not forced or def.chance < forced.chance) then
+			forced = def
+		end
+	end
+	local picked = forced
+	if not picked then
+		local roll = rng:NextNumber() * 100
+		for _, def in list do
+			roll -= def.chance
+			if roll < 0 then
+				picked = def
+				break
+			end
+		end
+	end
+	local result = picked or list[#list]
+	for _, def in list do
+		if def.pity then
+			pity[def.id] = if def == result then 0 else (pity[def.id] or 0) + 1
+		end
+	end
+	return result
+end
 
 return Traits

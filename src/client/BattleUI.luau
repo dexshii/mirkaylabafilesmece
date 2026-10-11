@@ -420,7 +420,7 @@ local function refreshHotbar(state)
 		local holder = hotbar:FindFirstChild("Slot" .. i)
 		if m and holder and holder:FindFirstChild("Count") then
 			local def = Units.ById[m.unitId]
-			holder.Count.Text = m.allowed and (m.placed .. "/" .. def.limit .. (state.cash < m.cost and "  need $" .. Ui.formatNumber(m.cost - state.cash) or "")) or "not allowed"
+			holder.Count.Text = m.allowed and (m.placed .. "/" .. (m.limit or def.limit) .. (state.cash < m.cost and "  need $" .. Ui.formatNumber(m.cost - state.cash) or "")) or "not allowed"
 			holder.Count.TextColor3 = state.cash >= m.cost and C.muted or Color3.fromRGB(255, 120, 120)
 			local stroke = holder.Card:FindFirstChildOfClass("UIStroke")
 			if stroke then

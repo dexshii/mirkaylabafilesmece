@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 
 local Units = require(game.ReplicatedStorage.Shared.Units)
 local Progression = require(game.ReplicatedStorage.Shared.Progression)
+local Traits = require(game.ReplicatedStorage.Shared.Traits)
 
 local DataService = {}
 
@@ -24,6 +25,7 @@ export type Data = {
 	progress: { [string]: number },
 	challenges: { [string]: number },
 	pity: { legendary: number, mythic: number },
+	traitPity: { [string]: number },
 	stats: { [string]: number },
 }
 
@@ -53,6 +55,7 @@ local function defaultData(): Data
 		progress = {},
 		challenges = {},
 		pity = { legendary = 0, mythic = 0 },
+		traitPity = {},
 		stats = { summons = 0, wins = 0, rolls = 0 },
 	}
 end
@@ -75,6 +78,10 @@ local function reconcile(data: any): Data
 			entry.l = entry.l or 1
 			entry.x = entry.x or 0
 			entry.g = entry.g or table.clone(Progression.DefaultGrades)
+			-- traits renamed since the save was written
+			if entry.t and not Traits.ById[entry.t] then
+				entry.t = Traits.Legacy[entry.t]
+			end
 		end
 	end
 	for i = 1, Units.TeamSize do

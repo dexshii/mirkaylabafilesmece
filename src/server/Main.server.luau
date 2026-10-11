@@ -175,9 +175,8 @@ handle("RollTrait", function(player, uid)
 		return false, "Not enough Trait Crystals. Clear challenges to earn more!"
 	end
 	data.crystals -= Traits.RollCost
-	local rarity = Rarities.roll(Rarities.TraitRates, rng)
-	local pool = Traits.ByRarity[rarity]
-	local trait = pool[rng:NextInteger(1, #pool)]
+	data.traitPity = data.traitPity or {}
+	local trait = Traits.roll(rng, data.traitPity)
 	data.units[uid].t = trait.id
 	data.stats.rolls = (data.stats.rolls or 0) + 1
 	DataService.changed(player)
@@ -280,7 +279,8 @@ local function rewardsFor(data, battle, won: boolean)
 	for _, member in battle.team do
 		local entry = data.units[member.uid]
 		if entry and xp > 0 then
-			local gained = Progression.addXp(entry, xp)
+			local trait = entry.t and Traits.ById[entry.t]
+			local gained = Progression.addXp(entry, math.floor(xp * (1 + (trait and trait.fx.xp or 0))))
 			if gained > 0 then
 				table.insert(result.levelUps, { unitId = entry.u, level = entry.l })
 			end
@@ -557,7 +557,50 @@ local function isAdmin(player: Player): boolean
 	return RunService:IsStudio() or player.UserId == game.CreatorId or table.find(ADMINS, player.UserId) ~= nil
 end
 
+-- the uploaded SM64 audio ids (see tools/sm64_import/sm64_audio.py), set from the admin panel and kept for the
+-- whole game in a DataStore; clients read them from SoundService's attributes
+local AUDIO_SHEETS = { "sm64_music_1", "sm64_music_2", "sm64_sfx" }
+local configStore: DataStore? = nil
+pcall(function()
+	configStore = game:GetService("DataStoreService"):GetDataStore("StarKingdomDefense_config")
+end)
+local function applyAudioIds(ids: { [string]: number })
+	local SoundService = game:GetService("SoundService")
+	for _, sheet in AUDIO_SHEETS do
+		if type(ids[sheet]) == "number" and ids[sheet] > 0 then
+			SoundService:SetAttribute(sheet, ids[sheet])
+		end
+	end
+end
+task.spawn(function()
+	local ok, saved = pcall(function()
+		return configStore and configStore:GetAsync("audio")
+	end)
+	if ok and type(saved) == "table" then
+		applyAudioIds(saved)
+	end
+end)
+
 local adminActions: { [string]: (Player, any, any) -> (boolean, string?) } = {
+	audioIds = function(_, ids)
+		if type(ids) ~= "table" then
+			return false, "Invalid ids"
+		end
+		local clean = {}
+		for _, sheet in AUDIO_SHEETS do
+			local id = tonumber(ids[sheet])
+			if id and id > 0 then
+				clean[sheet] = math.floor(id)
+			end
+		end
+		applyAudioIds(clean)
+		local saved = pcall(function()
+			if configStore then
+				configStore:SetAsync("audio", clean)
+			end
+		end)
+		return true, saved and "Audio ids saved for the whole game" or "Audio ids set (not saved: DataStores unavailable)"
+	end,
 	gems = function(player, n)
 		local data = DataService.get(player)
 		data.gems = math.max(0, data.gems + math.floor(tonumber(n) or 0))

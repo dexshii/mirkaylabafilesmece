@@ -31,6 +31,15 @@ local FALLBACK: { [string]: { id: string, pitch: number, volume: number } } = {
 	star_appears = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 1.2, volume = 0.6 },
 	power_meter = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 0.9, volume = 0.4 },
 	swish = { id = "rbxasset://sounds/swoosh.wav", pitch = 1.4, volume = 0.3 },
+	throw = { id = "rbxasset://sounds/swoosh.wav", pitch = 1.8, volume = 0.35 },
+	stomped = { id = "rbxasset://sounds/swoosh.wav", pitch = 0.7, volume = 0.4 },
+	spin = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 2.4, volume = 0.25 },
+	flame = { id = "rbxasset://sounds/swoosh.wav", pitch = 0.5, volume = 0.35 },
+	explosion = { id = "rbxasset://sounds/swoosh.wav", pitch = 0.4, volume = 0.5 },
+	pound = { id = "rbxasset://sounds/swoosh.wav", pitch = 0.6, volume = 0.5 },
+	enemy_die = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 0.7, volume = 0.3 },
+	right_answer = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 1.3, volume = 0.4 },
+	coin_spurt = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 1.8, volume = 0.3 },
 }
 
 local function load()
@@ -45,6 +54,11 @@ local function load()
 	end
 	local ids = data.ids or {}
 	local toLoad = {}
+	for _, old in sheets do
+		old:Destroy()
+	end
+	table.clear(sheets)
+	table.clear(clips)
 	for sheet in ids do
 		local id = SoundService:GetAttribute(sheet) or ids[sheet]
 		if type(id) == "string" then
@@ -207,6 +221,19 @@ end
 
 function Audio.start()
 	load()
+	-- ids set from the admin panel arrive as SoundService attributes: load again and restart the music
+	SoundService.AttributeChanged:Connect(function()
+		task.defer(function()
+			load()
+			local name = currentName
+			currentName = nil
+			if current then
+				current:Destroy()
+				current = nil
+			end
+			Audio.music(name)
+		end)
+	end)
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if not processed and input.KeyCode == Enum.KeyCode.M then
 			Audio.setMusicMuted(not Audio.musicMuted)

@@ -99,6 +99,9 @@ local function burst(parent: Instance, color: Color3, count: number, z: number)
 	end
 end
 
+local MYTHIC = Rarities.Info.Mythic.rank
+local LEGENDARY = Rarities.Info.Legendary.rank
+
 local function rarityColor(r: string): Color3
 	return Rarities.Info[r].color
 end
@@ -220,14 +223,15 @@ function SummonFx.play(results: { any }, done: () -> ())
 	local stages = {
 		{ rank = 1, color = Color3.fromRGB(230, 230, 255), text = "SUMMONING..." },
 		{ rank = 2, color = rarityColor("Rare"), text = "RARE...?" },
-		{ rank = 3, color = rarityColor("Legendary"), text = "LEGENDARY!?" },
-		{ rank = 4, color = rarityColor("Mythic"), text = "M Y T H I C ! ! !" },
+		{ rank = 3, color = rarityColor("Epic"), text = "EPIC!" },
+		{ rank = 4, color = rarityColor("Legendary"), text = "LEGENDARY!?" },
+		{ rank = 5, color = rarityColor("Mythic"), text = "M Y T H I C ! ! !" },
 	}
 	for i, st in stages do
 		if st.rank > bestRank or skipped then
 			break
 		end
-		colorRays(st.color, st.rank == 4)
+		colorRays(st.color, st.rank == MYTHIC)
 		tween(glow, 0.25, { BackgroundColor3 = st.color, Size = UDim2.fromOffset(220 + i * 50, 220 + i * 50) })
 		caption.Text = st.text
 		caption.TextColor3 = st.color
@@ -252,20 +256,20 @@ function SummonFx.play(results: { any }, done: () -> ())
 	end)
 	burst(root, rarityColor(best.rarity), 40, 6)
 	Audio.play("star_appears", { volume = 1 })
-	if bestRank >= 4 then
+	if bestRank >= MYTHIC then
 		task.delay(0.4, Audio.play, "voice_yahoo", { gap = 1 })
-	elseif bestRank == 3 then
+	elseif bestRank == LEGENDARY then
 		task.delay(0.4, Audio.play, "voice_yippee", { gap = 1 })
 	end
 	star:Destroy()
 	glow:Destroy()
 	caption:Destroy()
 	spinSpeed = 18
-	colorRays(rarityColor(best.rarity), bestRank == 4)
+	colorRays(rarityColor(best.rarity), bestRank == MYTHIC)
 
 	-- reveal (whatever goes wrong in it, the close button below still appears)
 	local revealed, revealError = pcall(function()
-		local banner = ({ "NICE PULL!", "RARE PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
+		local banner = ({ "NICE PULL!", "RARE PULL!", "EPIC PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
 		local title = Ui.title({
 			Text = banner,
 			Size = UDim2.fromOffset(700, 70),
@@ -278,7 +282,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 			ZIndex = 8,
 			Parent = stage,
 		})
-		if bestRank == 4 then
+		if bestRank == MYTHIC then
 			title.TextColor3 = WHITE
 			Ui.spin(Ui.new("UIGradient", { Color = RAINBOW, Parent = title }), 120)
 		end
@@ -366,7 +370,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 				tween(card, 0.16, { Size = UDim2.new(1, 0, 1, -28) }, Enum.EasingStyle.Back)
 				Ui.chip(c.r.rarity, rarityColor(c.r.rarity), { Size = UDim2.fromOffset(100, 22), Position = UDim2.new(0.5, -50, 0, -11), ZIndex = 12, Parent = card })
 				gradeRow(c.slot, c.r.grades, { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 1, -24) })
-				if rank >= 3 then
+				if rank >= Rarities.Info.Epic.rank then
 					-- legendary and mythic cards glow and burst
 					local stroke = card:FindFirstChildWhichIsA("UIStroke") :: UIStroke
 					stroke.Color = rarityColor(c.r.rarity)
@@ -377,7 +381,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 							tween(stroke, 0.5, { Thickness = 3 }).Completed:Wait()
 						end
 					end)
-					Audio.play(rank >= 4 and "red_coin" or "one_up", { gap = 0.05 })
+					Audio.play(rank >= MYTHIC and "red_coin" or "one_up", { gap = 0.05 })
 					local pos = c.slot.AbsolutePosition + c.slot.AbsoluteSize / 2 - stage.AbsolutePosition - stage.AbsoluteSize / 2
 					for _ = 1, 14 do
 						local p = Ui.new("Frame", {

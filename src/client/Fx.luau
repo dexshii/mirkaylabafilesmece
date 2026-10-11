@@ -232,12 +232,12 @@ function Fx.start()
 		shield = { "boing", 0.6, 0.3 },
 		shock = { "thwomp", 0.7, 0.3 },
 		summon = { "goomba_alert", 0.6, 0.4 },
-		bolt = { "throw", 0.18, 0.12 },
-		bonk = { "stomped", 0.25, 0.12 },
-		cone = { "flame", 0.2, 0.2 },
-		lob = { "explosion", 0.2, 0.25 },
-		slam = { "pound", 0.3, 0.2 },
-		zap = { "spin", 0.2, 0.12 },
+		bolt = { "throw", 0.45, 0.1 },
+		bonk = { "stomped", 0.5, 0.1 },
+		cone = { "flame", 0.45, 0.18 },
+		lob = { "explosion", 0.4, 0.22 },
+		slam = { "pound", 0.55, 0.18 },
+		zap = { "spin", 0.45, 0.1 },
 	}
 	-- the server sends each frame's effects as one list
 	Net.ev("Fx").OnClientEvent:Connect(function(list)
@@ -254,6 +254,9 @@ function Fx.start()
 			local sfx = STYLE_SOUNDS[p.style]
 			if sfx then
 				Audio.play(sfx[1], { volume = sfx[2], gap = sfx[3], max = 3 })
+			end
+			if p.style == "placed" and p.radius == 4 then
+				Audio.play("right_answer", { gap = 0.2 })
 			end
 			if p.style == "pop" and p.boss then
 				Audio.play("big_explosion", { gap = 1 })

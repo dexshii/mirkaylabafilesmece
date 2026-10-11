@@ -795,6 +795,101 @@ designs.starprincess = function()
 	}, eyes(4.9, -0.8, 0.3, 0.4, Color3.fromRGB(40, 90, 220)))
 end
 
+-- ===== added units =====
+designs.webskitter = function()
+	local brown = Color3.fromRGB(130, 80, 45)
+	local specs = {
+		P("Ball", Vector3.new(3.0, 2.2, 3.0), Vector3.new(0, 1.9, 0), brown),
+		P("Ball", Vector3.new(1.2, 0.5, 0.6), Vector3.new(0, 1.4, -1.4), BLACK),
+	}
+	for _, x in { -1, 1 } do
+		for _, z in { -0.8, 0.8 } do
+			table.insert(specs, P("Cylinder", Vector3.new(2.2, 0.35, 0.35), Vector3.new(x * 1.7, 1.0, z), Color3.fromRGB(90, 55, 30), { r = Vector3.new(0, 0, x * 50) }))
+		end
+	end
+	return concat(specs, eyes(2.9, -0.9, 0.55, 0.9))
+end
+designs.puffshot = function()
+	local red = Color3.fromRGB(220, 50, 60)
+	return concat({
+		P("Ball", Vector3.new(2.8, 2.8, 2.8), Vector3.new(0, 2.6, 0), red),
+		P("Ball", Vector3.new(2.2, 1.6, 0.8), Vector3.new(0, 2.6, -1.1), Color3.fromRGB(150, 150, 160), { m = Enum.Material.Metal }),
+		P("Cylinder", Vector3.new(1.2, 0.8, 0.8), Vector3.new(0, 2.3, -1.8), Color3.fromRGB(110, 110, 120), { r = Vector3.new(0, 90, 0), m = Enum.Material.Metal }),
+		P("Ball", Vector3.new(1.0, 0.4, 0.6), Vector3.new(-1.4, 1.3, 0), red),
+		P("Ball", Vector3.new(1.0, 0.4, 0.6), Vector3.new(1.4, 1.3, 0), red),
+	}, eyes(3.0, -1.4, 0.45, 0.5))
+end
+designs.crusherblock = function()
+	local stone = Color3.fromRGB(120, 140, 185)
+	local specs = {
+		P("Block", Vector3.new(4.6, 5.0, 3.0), Vector3.new(0, 3.3, 0), stone, { m = Enum.Material.Slate }),
+		P("Block", Vector3.new(2.4, 0.5, 0.2), Vector3.new(0, 2.0, -1.55), WHITE),
+	}
+	for _, x in { -2.3, 2.3 } do
+		for _, y in { 1.4, 3.3, 5.2 } do
+			table.insert(specs, P("Wedge", Vector3.new(0.6, 0.7, 0.7), Vector3.new(x * 1.1, y, 0), Color3.fromRGB(90, 105, 140), { r = Vector3.new(0, 0, x > 0 and -90 or 90) }))
+		end
+	end
+	return concat(specs, eyes(4.0, -1.55, 0.9, 0.9), angryBrows(4.9, -1.6, 0.9, 1.2))
+end
+designs.voltorb = function()
+	return concat({
+		P("Ball", Vector3.new(2.8, 2.8, 2.8), Vector3.new(0, 2.6, 0), BLACK, { m = Enum.Material.Metal }),
+		P("Cylinder", Vector3.new(0.2, 4.0, 4.0), Vector3.new(0, 2.6, 0), Color3.fromRGB(150, 200, 255), { m = Enum.Material.Neon, t = 0.4 }),
+		P("Cylinder", Vector3.new(0.2, 4.0, 4.0), Vector3.new(0, 2.6, 0), Color3.fromRGB(150, 200, 255), { r = Vector3.new(0, 90, 0), m = Enum.Material.Neon, t = 0.4 }),
+		P("Block", Vector3.new(1.0, 0.3, 0.2), Vector3.new(0, 2.0, -1.35), WHITE),
+	}, eyes(3.0, -1.25, 0.5, 0.7))
+end
+designs.burrowbomber = function()
+	local fur = Color3.fromRGB(110, 75, 50)
+	return concat({
+		P("Cylinder", Vector3.new(0.6, 4.0, 4.0), Vector3.new(0, 0.3, 0), Color3.fromRGB(120, 85, 50), { r = Vector3.new(0, 0, 90), m = Enum.Material.Ground }),
+		P("Ball", Vector3.new(2.8, 3.0, 2.6), Vector3.new(0, 2.0, 0), fur),
+		P("Ball", Vector3.new(2.0, 1.6, 1.0), Vector3.new(0, 2.2, -1.0), Color3.fromRGB(235, 200, 160)),
+		P("Ball", Vector3.new(0.7, 0.5, 0.5), Vector3.new(0, 2.5, -1.55), Color3.fromRGB(240, 120, 150)),
+		P("Ball", Vector3.new(0.8, 0.5, 1.0), Vector3.new(-1.4, 1.2, -0.8), Color3.fromRGB(235, 200, 160)),
+		P("Ball", Vector3.new(0.8, 0.5, 1.0), Vector3.new(1.4, 1.2, -0.8), Color3.fromRGB(235, 200, 160)),
+	}, eyes(3.0, -1.2, 0.45, 0.35))
+end
+designs.bananabandit = function()
+	local fur = Color3.fromRGB(150, 95, 55)
+	local face = Color3.fromRGB(240, 205, 165)
+	return concat({
+		P("Ball", Vector3.new(2.0, 2.2, 1.8), Vector3.new(0, 1.6, 0), fur),
+		P("Ball", Vector3.new(2.2, 2.0, 2.0), Vector3.new(0, 3.4, 0), fur),
+		P("Ball", Vector3.new(1.6, 1.4, 0.8), Vector3.new(0, 3.2, -0.8), face),
+		P("Ball", Vector3.new(0.8, 0.8, 0.3), Vector3.new(-1.2, 3.7, 0), face),
+		P("Ball", Vector3.new(0.8, 0.8, 0.3), Vector3.new(1.2, 3.7, 0), face),
+		P("Cylinder", Vector3.new(2.0, 0.3, 0.3), Vector3.new(0, 1.3, 1.3), fur, { r = Vector3.new(0, 90, 60) }),
+		P("Cylinder", Vector3.new(1.6, 0.4, 0.4), Vector3.new(1.3, 2.2, -0.6), Color3.fromRGB(255, 225, 60), { r = Vector3.new(0, 0, 30) }),
+	}, feet(fur, 0.6, 0.7), eyes(3.6, -1.0, 0.35, 0.4))
+end
+designs.grapplebot = function()
+	local purple = Color3.fromRGB(150, 70, 200)
+	return concat({
+		P("Ball", Vector3.new(3.2, 3.0, 3.0), Vector3.new(0, 2.4, 0), purple, { m = Enum.Material.Metal }),
+		P("Cylinder", Vector3.new(2.6, 0.5, 0.5), Vector3.new(-2.3, 2.6, -0.4), purple, { r = Vector3.new(0, 30, 0) }),
+		P("Cylinder", Vector3.new(2.6, 0.5, 0.5), Vector3.new(2.3, 2.6, -0.4), purple, { r = Vector3.new(0, -30, 0) }),
+		P("Ball", Vector3.new(1.0, 1.0, 1.0), Vector3.new(-3.4, 2.6, -1.0), Color3.fromRGB(230, 180, 60)),
+		P("Ball", Vector3.new(1.0, 1.0, 1.0), Vector3.new(3.4, 2.6, -1.0), Color3.fromRGB(230, 180, 60)),
+		P("Cylinder", Vector3.new(1.6, 0.2, 0.2), Vector3.new(0, 4.6, 0), BLACK, { r = Vector3.new(0, 0, 90) }),
+		P("Ball", Vector3.new(0.6, 0.6, 0.6), Vector3.new(0, 5.4, 0), Color3.fromRGB(255, 80, 80), { m = Enum.Material.Neon }),
+	}, feet(Color3.fromRGB(230, 180, 60), 0.9, 0.9), eyes(2.9, -1.35, 0.55, 0.7))
+end
+designs.dinopal = function()
+	local green = Color3.fromRGB(80, 200, 80)
+	return concat({
+		P("Ball", Vector3.new(2.4, 2.6, 2.4), Vector3.new(0, 2.0, 0.2), green),
+		P("Ball", Vector3.new(1.8, 2.0, 1.0), Vector3.new(0, 2.0, -0.8), WHITE),
+		P("Ball", Vector3.new(2.0, 1.0, 1.6), Vector3.new(0, 2.8, 0.6), Color3.fromRGB(220, 40, 40)),
+		P("Ball", Vector3.new(2.2, 2.0, 2.2), Vector3.new(0, 4.4, -0.4), green),
+		P("Ball", Vector3.new(2.0, 1.4, 1.8), Vector3.new(0, 4.1, -1.6), green),
+		P("Ball", Vector3.new(0.9, 0.6, 0.6), Vector3.new(0, 4.4, -0.2), Color3.fromRGB(240, 100, 40)),
+		P("Ball", Vector3.new(1.0, 0.7, 1.4), Vector3.new(-0.7, 0.35, -0.2), Color3.fromRGB(240, 120, 40)),
+		P("Ball", Vector3.new(1.0, 0.7, 1.4), Vector3.new(0.7, 0.35, -0.2), Color3.fromRGB(240, 120, 40)),
+	}, eyes(5.2, -0.9, 0.4, 0.6))
+end
+
 -- ===== enemies =====
 designs.grumble = function()
 	return mushroom(Color3.fromRGB(140, 80, 40), Color3.fromRGB(170, 110, 60), Color3.fromRGB(240, 210, 170), BLACK, true)
@@ -1213,18 +1308,18 @@ return Progression
           <string name="Source"><![CDATA[-- Rarity tiers shared by summonable units and traits.
 local Rarities = {}
 
-Rarities.Order = { "Common", "Rare", "Legendary", "Mythic" }
+Rarities.Order = { "Common", "Rare", "Epic", "Legendary", "Mythic" }
 
 Rarities.Info = {
 	Common = { rank = 1, color = Color3.fromRGB(176, 186, 196), releaseGems = 5 },
 	Rare = { rank = 2, color = Color3.fromRGB(70, 150, 255), releaseGems = 15 },
-	Legendary = { rank = 3, color = Color3.fromRGB(255, 190, 40), releaseGems = 60 },
-	Mythic = { rank = 4, color = Color3.fromRGB(255, 70, 150), releaseGems = 250 },
+	Epic = { rank = 3, color = Color3.fromRGB(170, 90, 255), releaseGems = 30 },
+	Legendary = { rank = 4, color = Color3.fromRGB(255, 190, 40), releaseGems = 60 },
+	Mythic = { rank = 5, color = Color3.fromRGB(255, 70, 150), releaseGems = 250 },
 }
 
 -- percent chances, must add up to 100
-Rarities.SummonRates = { Common = 60, Rare = 30, Legendary = 8.5, Mythic = 1.5 }
-Rarities.TraitRates = { Common = 55, Rare = 32, Legendary = 11, Mythic = 2 }
+Rarities.SummonRates = { Common = 52, Rare = 28, Epic = 13, Legendary = 5.5, Mythic = 1.5 }
 
 -- summons without a Legendary-or-better / Mythic before one is guaranteed
 Rarities.LegendaryPity = 50
@@ -1271,6 +1366,10 @@ export type Computed = {
 	slow: { pct: number, dur: number }?,
 	burn: { dps: number, dur: number }?,
 	stun: { chance: number, dur: number }?,
+	execute: number,
+	critChance: number,
+	critDamage: number,
+	dotMult: number,
 	chain: number,
 }
 
@@ -1288,7 +1387,7 @@ function Stats.compute(unitId: string, level: number, traitId: string?, buffs: {
 
 	local damage = def.damage * (1 + 0.30 * level) * (1 + (t.damage or 0) + (b.damage or 0)) * Progression.levelDamage(u.l) * (gm[g.d] or 1)
 	local range = def.range * (1 + 0.06 * level) * (1 + (t.range or 0)) * (gm[g.r] or 1)
-	local cooldown = def.cooldown * (1 - 0.05 * level) / (1 + (t.speed or 0)) / (gm[g.s] or 1)
+	local cooldown = def.cooldown * (1 - 0.05 * level) * (1 - math.min(t.speed or 0, 0.8)) / (gm[g.s] or 1)
 
 	local slow = def.attack.slow
 	if t.slow and (not slow or t.slow.pct > slow.pct) then
@@ -1314,12 +1413,26 @@ function Stats.compute(unitId: string, level: number, traitId: string?, buffs: {
 		bossMult = (def.attack.bossMult or 1) * (1 + (t.bossDamage or 0)),
 		cashMult = 1 + (t.cash or 0),
 		costMult = 1 - (t.cost or 0),
-		farm = (def.farm or 0) * (1 + 0.5 * level) + (t.waveCash or 0),
+		farm = (def.farm or 0) * (1 + 0.5 * level) * (1 + (t.farm or 0)) + (t.waveCash or 0),
 		slow = slow,
 		burn = burn,
 		stun = stun,
+		-- chance per hit to defeat a non-boss enemy outright
+		execute = def.attack.execute or 0,
+		critChance = t.crit and t.crit.chance or 0,
+		critDamage = 1.5 + (t.crit and t.crit.damage or 0),
+		dotMult = 1 + (t.dot or 0),
 		chain = (def.attack.chain or 0) + (t.chain or 0),
 	}
+end
+
+-- how many of a unit may be placed (traits like Boundless allow only one)
+function Stats.limit(unitId: string, traitId: string?): number
+	local trait = traitId and Traits.ById[traitId]
+	if trait and trait.fx.single then
+		return 1
+	end
+	return Units.ById[unitId].limit
 end
 
 function Stats.placeCost(unitId: string, traitId: string?): number
@@ -1386,58 +1499,81 @@ return Stats
         <Properties>
           <string name="Name">Traits</string>
           <string name="Source"><![CDATA[-- Traits are rolled onto a unit with Trait Crystals (earned from challenges). A unit holds one trait; rolling again
--- replaces it. Effect fields (all optional):
---   damage / speed / range: +fraction (speed = attack speed, so cooldown is divided by 1 + speed)
---   cost: fraction off placement and upgrade cost        cash: +fraction cash from this unit's kills
---   bossDamage: +fraction vs bosses                      hitsAir: can target flying enemies
---   slow = {pct, dur}   burn = {dps (fraction of hit damage per second), dur}   stun = {chance, dur}
---   chain: extra enemies each attack jumps to (at 60% damage)   waveCash: cash paid at the end of each wave
+-- replaces it. Every trait has its own chance (`chance`, in percent; they add up to 100), and the rarest ones have
+-- pity: after `pity` rolls without it, the next roll gives it.
+-- Effect fields (all optional):
+--   damage / speed / range: +fraction (speed lowers SPA: the cooldown is multiplied by 1 - speed)
+--   crit = { chance, damage }: +fraction crit chance and +fraction crit damage (crits deal 150% + damage)
+--   dot: +fraction damage for burns          cost: fraction off placement and upgrade cost
+--   farm: +fraction money-farm income        xp: +fraction unit XP from battles
+--   single: only one of this unit can be placed
 local Traits = {}
 
 export type TraitDef = {
 	id: string,
 	name: string,
 	rarity: string,
+	chance: number,
+	pity: number?,
 	desc: string,
 	fx: { [string]: any },
 }
 
 local list: { TraitDef } = {
-	-- Common
-	{ id = "strong1", name = "Strong I", rarity = "Common", desc = "+8% damage", fx = { damage = 0.08 } },
-	{ id = "quick1", name = "Quick I", rarity = "Common", desc = "+8% attack speed", fx = { speed = 0.08 } },
-	{ id = "keen1", name = "Keen I", rarity = "Common", desc = "+8% range", fx = { range = 0.08 } },
-	{ id = "thrifty", name = "Thrifty", rarity = "Common", desc = "-10% placement and upgrade cost", fx = { cost = 0.10 } },
-
-	-- Rare
-	{ id = "strong2", name = "Strong II", rarity = "Rare", desc = "+18% damage", fx = { damage = 0.18 } },
-	{ id = "quick2", name = "Quick II", rarity = "Rare", desc = "+18% attack speed", fx = { speed = 0.18 } },
-	{ id = "hawkeye", name = "Hawkeye", rarity = "Rare", desc = "+20% range and can hit flying enemies", fx = { range = 0.20, hitsAir = true } },
-	{ id = "prospector", name = "Prospector", rarity = "Rare", desc = "+25% cash from this unit's kills", fx = { cash = 0.25 } },
-
-	-- Legendary
-	{ id = "titanslayer", name = "Titan Slayer", rarity = "Legendary", desc = "+60% damage to bosses", fx = { bossDamage = 0.60 } },
-	{ id = "frostbite", name = "Frostbite", rarity = "Legendary", desc = "Attacks slow enemies by 25% for 1.5s", fx = { slow = { pct = 0.25, dur = 1.5 } } },
-	{ id = "blazing", name = "Blazing", rarity = "Legendary", desc = "Attacks burn for 3s (30% of hit damage per second)", fx = { burn = { dps = 0.30, dur = 3 } } },
-	{ id = "overclock", name = "Overclock", rarity = "Legendary", desc = "+30% attack speed and +10% damage", fx = { speed = 0.30, damage = 0.10 } },
-
-	-- Mythic
+	-- rainbow (Mythic), with pity
 	{
-		id = "superstar",
-		name = "Superstar",
+		id = "boundless",
+		name = "Boundless",
 		rarity = "Mythic",
-		desc = "+50% damage, +25% attack speed, +15% range",
-		fx = { damage = 0.50, speed = 0.25, range = 0.15 },
+		chance = 0.1,
+		pity = 1500,
+		desc = "+300% damage, -5% SPA, +10% range. Only one can be placed",
+		fx = { damage = 3.0, speed = 0.05, range = 0.10, single = true },
 	},
-	{ id = "chainreaction", name = "Chain Reaction", rarity = "Mythic", desc = "Every attack chains to 2 more enemies", fx = { chain = 2 } },
-	{ id = "midas", name = "Midas Touch", rarity = "Mythic", desc = "+100% cash from kills and +100 cash every wave", fx = { cash = 1.0, waveCash = 100 } },
 	{
-		id = "timestop",
-		name = "Time Stop",
+		id = "primeval",
+		name = "Primeval",
 		rarity = "Mythic",
-		desc = "+20% damage, 12% chance per hit to stun for 1.5s",
-		fx = { damage = 0.20, stun = { chance = 0.12, dur = 1.5 } },
+		chance = 0.2,
+		pity = 750,
+		desc = "+35% damage, -15% SPA, +20% range",
+		fx = { damage = 0.35, speed = 0.15, range = 0.20 },
 	},
+	{
+		id = "forsworn",
+		name = "Forsworn",
+		rarity = "Mythic",
+		chance = 0.3,
+		pity = 500,
+		desc = "+35% crit damage, +35% crit chance, +10% range",
+		fx = { crit = { chance = 0.35, damage = 0.35 }, range = 0.10 },
+	},
+	{
+		id = "wyrmblood",
+		name = "Wyrmblood",
+		rarity = "Mythic",
+		chance = 0.5,
+		pity = 300,
+		desc = "+20% damage, +120% burn damage, -15% cost",
+		fx = { damage = 0.20, dot = 1.2, cost = 0.15 },
+	},
+
+	-- gold (Legendary and Epic)
+	{ id = "tycoon", name = "Tycoon", rarity = "Legendary", chance = 2, desc = "+25% money-farm income", fx = { farm = 0.25 } },
+	{ id = "farsight", name = "Farsight", rarity = "Legendary", chance = 3, desc = "+25% range", fx = { range = 0.25 } },
+	{ id = "surge", name = "Surge", rarity = "Legendary", chance = 4, desc = "-15% SPA", fx = { speed = 0.15 } },
+	{ id = "accuracy2", name = "Accuracy II", rarity = "Legendary", chance = 4, desc = "+20% crit chance, +10% crit damage", fx = { crit = { chance = 0.20, damage = 0.10 } } },
+	{ id = "accuracy1", name = "Accuracy I", rarity = "Epic", chance = 6, desc = "+10% crit chance, +5% crit damage", fx = { crit = { chance = 0.10, damage = 0.05 } } },
+	{ id = "overdrive", name = "Overdrive", rarity = "Epic", chance = 6, desc = "+15% damage", fx = { damage = 0.15 } },
+
+	-- blue (Rare and Common)
+	{ id = "reach2", name = "Reach II", rarity = "Rare", chance = 7, desc = "+10% range", fx = { range = 0.10 } },
+	{ id = "swift2", name = "Swift II", rarity = "Rare", chance = 7, desc = "-10% SPA", fx = { speed = 0.10 } },
+	{ id = "power2", name = "Power II", rarity = "Rare", chance = 7, desc = "+10% damage", fx = { damage = 0.10 } },
+	{ id = "wisdom", name = "Wisdom", rarity = "Rare", chance = 9, desc = "+50% unit XP", fx = { xp = 0.50 } },
+	{ id = "reach1", name = "Reach I", rarity = "Common", chance = 14.63, desc = "+5% range", fx = { range = 0.05 } },
+	{ id = "swift1", name = "Swift I", rarity = "Common", chance = 14.63, desc = "-5% SPA", fx = { speed = 0.05 } },
+	{ id = "power1", name = "Power I", rarity = "Common", chance = 14.64, desc = "+5% damage", fx = { damage = 0.05 } },
 }
 
 Traits.List = list
@@ -1449,7 +1585,60 @@ for _, def in list do
 	table.insert(Traits.ByRarity[def.rarity], def)
 end
 
+-- traits from before this list, as the trait each one becomes
+Traits.Legacy = {
+	strong1 = "power1",
+	quick1 = "swift1",
+	keen1 = "reach1",
+	thrifty = "power1",
+	strong2 = "power2",
+	quick2 = "swift2",
+	hawkeye = "reach2",
+	prospector = "tycoon",
+	strong3 = "overdrive",
+	quick3 = "surge",
+	eagleeye = "farsight",
+	bounty = "tycoon",
+	titanslayer = "accuracy2",
+	frostbite = "overdrive",
+	blazing = "accuracy2",
+	overclock = "surge",
+	superstar = "primeval",
+	chainreaction = "forsworn",
+	midas = "wyrmblood",
+	timestop = "forsworn",
+}
+
 Traits.RollCost = 1 -- trait crystals per roll
+
+-- rolls a trait. pity: rolls since each pity trait was last rolled (updated in place)
+function Traits.roll(rng: Random, pity: { [string]: number }): TraitDef
+	-- a pity trait whose counter is full comes first, the rarest one if several are
+	local forced: TraitDef? = nil
+	for _, def in list do
+		if def.pity and (pity[def.id] or 0) + 1 >= def.pity and (not forced or def.chance < forced.chance) then
+			forced = def
+		end
+	end
+	local picked = forced
+	if not picked then
+		local roll = rng:NextNumber() * 100
+		for _, def in list do
+			roll -= def.chance
+			if roll < 0 then
+				picked = def
+				break
+			end
+		end
+	end
+	local result = picked or list[#list]
+	for _, def in list do
+		if def.pity then
+			pity[def.id] = if def == result then 0 else (pity[def.id] or 0) + 1
+		end
+	end
+	return result
+end
 
 return Traits
 ]]></string>
@@ -1734,6 +1923,144 @@ local list: { UnitDef } = {
 		fx = { style = "zap", color = Color3.fromRGB(255, 160, 220) },
 		height = 6,
 	},
+	-- ===== added: one Common, one Rare, the Epic tier and one more Mythic =====
+	{
+		id = "webskitter",
+		name = "Webskitter",
+		rarity = "Common",
+		role = "Fast ground hitter",
+		desc = "A jumpy spider bug. Weak bites, but very fast ones.",
+		cost = 200,
+		limit = 6,
+		damage = 5,
+		range = 10,
+		cooldown = 0.4,
+		hitsGround = true,
+		hitsAir = false,
+		attack = { kind = "single" },
+		fx = { style = "bonk", color = Color3.fromRGB(120, 70, 40) },
+		height = 3.4,
+	},
+	{
+		id = "puffshot",
+		name = "Puffshot",
+		rarity = "Rare",
+		role = "Rapid fire",
+		desc = "A masked floater that spits a stream of pellets at ground and air.",
+		cost = 460,
+		limit = 4,
+		damage = 9,
+		range = 16,
+		cooldown = 0.35,
+		hitsGround = true,
+		hitsAir = true,
+		attack = { kind = "single" },
+		fx = { style = "bolt", color = Color3.fromRGB(230, 60, 60) },
+		height = 4.4,
+	},
+	{
+		id = "crusherblock",
+		name = "Crusher Block",
+		rarity = "Epic",
+		role = "Ground AoE stun",
+		desc = "An angry stone block. Drops on everything around it, stunning most of what it hits.",
+		cost = 700,
+		limit = 3,
+		damage = 52,
+		range = 11,
+		cooldown = 2.0,
+		hitsGround = true,
+		hitsAir = false,
+		attack = { kind = "slam", stun = { chance = 0.6, dur = 0.8 } },
+		fx = { style = "slam", color = Color3.fromRGB(120, 140, 190) },
+		height = 6,
+	},
+	{
+		id = "voltorb",
+		name = "Volt Orb",
+		rarity = "Epic",
+		role = "Chain shock",
+		desc = "A crackling ball of electricity. Shocks jump between 3 enemies, ground or air.",
+		cost = 760,
+		limit = 3,
+		damage = 30,
+		range = 17,
+		cooldown = 1.1,
+		hitsGround = true,
+		hitsAir = true,
+		attack = { kind = "chain", chain = 2, falloff = 0.7 },
+		fx = { style = "zap", color = Color3.fromRGB(150, 200, 255) },
+		height = 4,
+	},
+	{
+		id = "burrowbomber",
+		name = "Burrow Bomber",
+		rarity = "Epic",
+		role = "Long-range splash",
+		desc = "Pops out of its hole to lob rocks that crash down on groups.",
+		cost = 680,
+		limit = 3,
+		damage = 46,
+		range = 24,
+		cooldown = 2.2,
+		hitsGround = true,
+		hitsAir = false,
+		attack = { kind = "splash", radius = 7 },
+		fx = { style = "lob", color = Color3.fromRGB(150, 110, 70) },
+		height = 4,
+	},
+	{
+		id = "bananabandit",
+		name = "Banana Bandit",
+		rarity = "Epic",
+		role = "Farm + fighter",
+		desc = "A cheeky monkey. Pays cash every wave, and its banana throws earn extra cash.",
+		cost = 820,
+		limit = 2,
+		damage = 18,
+		range = 15,
+		cooldown = 1.0,
+		hitsGround = true,
+		hitsAir = true,
+		attack = { kind = "single" },
+		farm = 90,
+		fx = { style = "bolt", color = Color3.fromRGB(255, 220, 60) },
+		height = 4.4,
+	},
+	{
+		id = "grapplebot",
+		name = "Grapple Bot",
+		rarity = "Epic",
+		role = "Heavy single target",
+		desc = "Grabs an enemy and hurls it. Big hits that stun, double damage to bosses.",
+		cost = 740,
+		limit = 3,
+		damage = 70,
+		range = 12,
+		cooldown = 1.8,
+		hitsGround = true,
+		hitsAir = false,
+		attack = { kind = "single", bossMult = 2, stun = { chance = 0.5, dur = 1 } },
+		fx = { style = "bonk", color = Color3.fromRGB(150, 70, 200) },
+		height = 5.4,
+	},
+	{
+		id = "dinopal",
+		name = "Dino Pal",
+		rarity = "Mythic",
+		role = "Gobbler",
+		desc = "The secret friend from the castle roof. Fast tongue lashes, and each one may gulp a non-boss enemy whole.",
+		cost = 1350,
+		limit = 2,
+		damage = 40,
+		range = 15,
+		cooldown = 0.6,
+		hitsGround = true,
+		hitsAir = true,
+		attack = { kind = "single", execute = 0.12 },
+		fx = { style = "bonk", color = Color3.fromRGB(80, 200, 80) },
+		height = 5.6,
+	},
 }
 
 Units.List = list
@@ -2001,6 +2328,9 @@ function Battle:damage(enemy, amount: number, tower, applyEffects: boolean): num
 	end
 	local s = tower and tower.stats
 	local d = amount
+	if s and applyEffects and s.critChance > 0 and math.random() < s.critChance then
+		d *= s.critDamage
+	end
 	if s then
 		if enemy.flying then
 			d *= s.airMult
@@ -2022,13 +2352,18 @@ function Battle:damage(enemy, amount: number, tower, applyEffects: boolean): num
 			enemy.slowUntil = math.max(enemy.slowUntil, self.time + s.slow.dur)
 		end
 		if s.burn then
-			enemy.burnDps = math.max(self.time < enemy.burnUntil and enemy.burnDps or 0, amount * s.burn.dps)
+			enemy.burnDps = math.max(self.time < enemy.burnUntil and enemy.burnDps or 0, amount * s.burn.dps * s.dotMult)
 			enemy.burnUntil = self.time + s.burn.dur
 			enemy.burnSource = tower
 		end
 		if s.stun and not enemy.def.boss and math.random() < s.stun.chance then
 			enemy.stunUntil = math.max(enemy.stunUntil, self.time + s.stun.dur)
 		end
+	end
+
+	if s and s.execute > 0 and enemy.hp > 0 and not enemy.def.boss and math.random() < s.execute then
+		d += enemy.hp
+		enemy.hp = 0
 	end
 
 	if enemy.hp <= 0 then
@@ -2359,8 +2694,9 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 	if not rarityOk(self, member.unitId) then
 		return false, "Only " .. self.mods.onlyRarity .. " units are allowed in this challenge"
 	end
-	if def.limit and self:towerCount(member.unitId) >= def.limit then
-		return false, def.name .. " limit reached (" .. def.limit .. ")"
+	local limit = Stats.limit(member.unitId, member.trait)
+	if self:towerCount(member.unitId) >= limit then
+		return false, def.name .. " limit reached (" .. limit .. ")"
 	end
 	if self.mods.maxUnits and self:towerCount() >= self.mods.maxUnits then
 		return false, "Unit limit reached (" .. self.mods.maxUnits .. ")"
@@ -2435,7 +2771,7 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 	-- Legendary and Mythic units get a rarity-coloured outline and a sparkle aura (only these: Roblox draws at
 	-- most 31 Highlights, and each one costs a render pass)
 	local rank = Rarities.Info[def.rarity].rank
-	if rank >= 3 then
+	if rank >= Rarities.Info.Legendary.rank then
 		local outline = Instance.new("Highlight")
 		outline.FillTransparency = 1
 		outline.OutlineTransparency = 0
@@ -2446,7 +2782,7 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 		aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
 		aura.Color = ColorSequence.new(Rarities.Info[def.rarity].color)
 		aura.LightEmission = 1
-		aura.Rate = rank >= 4 and 14 or 7
+		aura.Rate = rank >= Rarities.Info.Mythic.rank and 14 or 7
 		aura.Lifetime = NumberRange.new(0.8, 1.4)
 		aura.Speed = NumberRange.new(1.5, 3)
 		aura.SpreadAngle = Vector2.new(180, 180)
@@ -2697,6 +3033,7 @@ function Battle:snapshot()
 				level = m.level,
 				grades = m.grades,
 				placed = self:towerCount(m.unitId),
+				limit = Stats.limit(m.unitId, m.trait),
 				cost = Stats.placeCost(m.unitId, m.trait),
 				allowed = rarityOk(self, m.unitId),
 			}
@@ -2767,6 +3104,7 @@ local Players = game:GetService("Players")
 
 local Units = require(game.ReplicatedStorage.Shared.Units)
 local Progression = require(game.ReplicatedStorage.Shared.Progression)
+local Traits = require(game.ReplicatedStorage.Shared.Traits)
 
 local DataService = {}
 
@@ -2786,6 +3124,7 @@ export type Data = {
 	progress: { [string]: number },
 	challenges: { [string]: number },
 	pity: { legendary: number, mythic: number },
+	traitPity: { [string]: number },
 	stats: { [string]: number },
 }
 
@@ -2815,6 +3154,7 @@ local function defaultData(): Data
 		progress = {},
 		challenges = {},
 		pity = { legendary = 0, mythic = 0 },
+		traitPity = {},
 		stats = { summons = 0, wins = 0, rolls = 0 },
 	}
 end
@@ -2837,6 +3177,10 @@ local function reconcile(data: any): Data
 			entry.l = entry.l or 1
 			entry.x = entry.x or 0
 			entry.g = entry.g or table.clone(Progression.DefaultGrades)
+			-- traits renamed since the save was written
+			if entry.t and not Traits.ById[entry.t] then
+				entry.t = Traits.Legacy[entry.t]
+			end
 		end
 	end
 	for i = 1, Units.TeamSize do
@@ -3458,9 +3802,8 @@ handle("RollTrait", function(player, uid)
 		return false, "Not enough Trait Crystals. Clear challenges to earn more!"
 	end
 	data.crystals -= Traits.RollCost
-	local rarity = Rarities.roll(Rarities.TraitRates, rng)
-	local pool = Traits.ByRarity[rarity]
-	local trait = pool[rng:NextInteger(1, #pool)]
+	data.traitPity = data.traitPity or {}
+	local trait = Traits.roll(rng, data.traitPity)
 	data.units[uid].t = trait.id
 	data.stats.rolls = (data.stats.rolls or 0) + 1
 	DataService.changed(player)
@@ -3563,7 +3906,8 @@ local function rewardsFor(data, battle, won: boolean)
 	for _, member in battle.team do
 		local entry = data.units[member.uid]
 		if entry and xp > 0 then
-			local gained = Progression.addXp(entry, xp)
+			local trait = entry.t and Traits.ById[entry.t]
+			local gained = Progression.addXp(entry, math.floor(xp * (1 + (trait and trait.fx.xp or 0))))
 			if gained > 0 then
 				table.insert(result.levelUps, { unitId = entry.u, level = entry.l })
 			end
@@ -3840,7 +4184,50 @@ local function isAdmin(player: Player): boolean
 	return RunService:IsStudio() or player.UserId == game.CreatorId or table.find(ADMINS, player.UserId) ~= nil
 end
 
+-- the uploaded SM64 audio ids (see tools/sm64_import/sm64_audio.py), set from the admin panel and kept for the
+-- whole game in a DataStore; clients read them from SoundService's attributes
+local AUDIO_SHEETS = { "sm64_music_1", "sm64_music_2", "sm64_sfx" }
+local configStore: DataStore? = nil
+pcall(function()
+	configStore = game:GetService("DataStoreService"):GetDataStore("StarKingdomDefense_config")
+end)
+local function applyAudioIds(ids: { [string]: number })
+	local SoundService = game:GetService("SoundService")
+	for _, sheet in AUDIO_SHEETS do
+		if type(ids[sheet]) == "number" and ids[sheet] > 0 then
+			SoundService:SetAttribute(sheet, ids[sheet])
+		end
+	end
+end
+task.spawn(function()
+	local ok, saved = pcall(function()
+		return configStore and configStore:GetAsync("audio")
+	end)
+	if ok and type(saved) == "table" then
+		applyAudioIds(saved)
+	end
+end)
+
 local adminActions: { [string]: (Player, any, any) -> (boolean, string?) } = {
+	audioIds = function(_, ids)
+		if type(ids) ~= "table" then
+			return false, "Invalid ids"
+		end
+		local clean = {}
+		for _, sheet in AUDIO_SHEETS do
+			local id = tonumber(ids[sheet])
+			if id and id > 0 then
+				clean[sheet] = math.floor(id)
+			end
+		end
+		applyAudioIds(clean)
+		local saved = pcall(function()
+			if configStore then
+				configStore:SetAsync("audio", clean)
+			end
+		end)
+		return true, saved and "Audio ids saved for the whole game" or "Audio ids set (not saved: DataStores unavailable)"
+	end,
 	gems = function(player, n)
 		local data = DataService.get(player)
 		data.gems = math.max(0, data.gems + math.floor(tonumber(n) or 0))
@@ -4029,6 +4416,7 @@ end)
           <string name="Source"><![CDATA[-- Builds a campaign map out of parts at an arena origin: the play field (tiled ground, a curbed path, themed
 -- landmarks), the scenery around it, the enemy portal and your castle.
 local Maps = require(game.ReplicatedStorage.Shared.Maps)
+local ModelFactory = require(game.ReplicatedStorage.Shared.ModelFactory)
 
 local MapBuilder = {}
 
@@ -4150,6 +4538,7 @@ end
 -- ============================================================ decorations
 
 local WHITE = Color3.fromRGB(250, 250, 250)
+local BLACK = Color3.fromRGB(25, 25, 30)
 
 local decor: { [string]: (Instance, Vector3, number, Random) -> () } = {}
 
@@ -4459,6 +4848,220 @@ local function castle(parent: Instance, pos: Vector3, yaw: number)
 	m.Parent = parent
 end
 
+-- ============================================================ landmarks
+-- Each map is dressed as an SM64 level: a big set piece behind the field, smaller props around it, and one of the
+-- game's characters as a giant statue (in the private build it shows as the real SM64 model).
+
+local WOOD = Color3.fromRGB(140, 95, 55)
+local GOLDC = Color3.fromRGB(255, 205, 40)
+
+local function statue(parent: Instance, key: string, scale: number, cf: CFrame)
+	local ok, model = pcall(ModelFactory.build, key, scale, true)
+	if ok and model then
+		model.Name = "Statue_" .. key
+		model:PivotTo(cf)
+		model.Parent = parent
+	end
+end
+
+local function coinRing(f: Instance, center: Vector3, radius: number, count: number, color: Color3)
+	for i = 1, count do
+		local a = i / count * math.pi * 2
+		local c = part(f, Vector3.new(0.5, 2.6, 2.6), CFrame.new(center + Vector3.new(math.cos(a) * radius, 0, math.sin(a) * radius)) * CFrame.Angles(0, a, 0) * CFrame.Angles(0, 0, math.rad(90)), color, { shape = "Cylinder", material = Enum.Material.Neon, shadow = false })
+		c.Transparency = 0.05
+	end
+end
+
+local function fence(f: Instance, a: Vector3, b: Vector3, color: Color3)
+	local len = (b - a).Magnitude
+	local cf = CFrame.lookAt((a + b) / 2, b)
+	part(f, Vector3.new(0.4, 0.4, len), cf + Vector3.new(0, 2.2, 0), color, { material = Enum.Material.Wood })
+	part(f, Vector3.new(0.4, 0.4, len), cf + Vector3.new(0, 1.2, 0), color, { material = Enum.Material.Wood })
+	for d = 0, len, 4 do
+		part(f, Vector3.new(0.7, 2.8, 0.7), CFrame.new(a + (b - a).Unit * d + Vector3.new(0, 1.4, 0)), shade(color, -0.1), { material = Enum.Material.Wood })
+	end
+end
+
+-- a round floating island: a grass disc on a stack of shrinking rock discs
+local function floatingIsland(f: Instance, top: Vector3, radius: number, grass: Color3, rock: Color3)
+	pillar(f, 1.2, radius * 2, top - Vector3.new(0, 1.2, 0), grass, { material = Enum.Material.Grass })
+	for i = 1, 4 do
+		local r = radius * (1 - i * 0.2)
+		pillar(f, 2.4, r * 2, top - Vector3.new(0, 1.2 + i * 2.4, 0), shade(rock, -i * 0.05), { material = Enum.Material.Rock })
+	end
+end
+
+-- a tiered mountain of stacked discs with a path winding up it
+local function mountain(f: Instance, base: Vector3, radius: number, tiers: number, color: Color3, pathColor: Color3)
+	local h = 0
+	for i = 0, tiers - 1 do
+		local r = radius * (1 - i / (tiers + 1))
+		local th = 9
+		pillar(f, th, r * 2, base + Vector3.new(0, h, 0), shade(color, (i % 2) * 0.06), { material = Enum.Material.Grass, collide = true })
+		-- a ledge path around each tier
+		for k = 0, 9 do
+			local a = k / 10 * math.pi * 2 + i
+			part(f, Vector3.new(4, 0.4, r * 0.62), CFrame.new(base + Vector3.new(math.cos(a) * r * 0.86, h + th + 0.2, math.sin(a) * r * 0.86)) * CFrame.Angles(0, -a, 0), pathColor, { material = Enum.Material.Sand, shadow = false })
+		end
+		h += th
+	end
+	return base + Vector3.new(0, h, 0)
+end
+
+local landmarks: { [string]: (Instance, Vector3, Random) -> () } = {}
+
+-- Bob-omb Battlefield: the mountain with King Bob-omb on top, Chain Chomp on its post, floating islands, a cannon
+landmarks.meadow = function(f, o, rng)
+	local top = mountain(f, o + Vector3.new(0, -14, -150), 70, 6, Color3.fromRGB(90, 180, 70), Color3.fromRGB(200, 165, 110))
+	statue(f, "kinggrumble", 4, CFrame.new(top) * CFrame.Angles(0, 0, 0))
+	pillar(f, 14, 0.6, top + Vector3.new(10, 0, 0), WHITE)
+	part(f, Vector3.new(0.2, 4, 6), CFrame.new(top + Vector3.new(10, 12, 3)), Color3.fromRGB(230, 40, 40), { material = Enum.Material.Fabric })
+	-- Chain Chomp on its post with a gate, off the left of the field
+	local post = o + Vector3.new(-105, -14, 25)
+	pillar(f, 30, 3, post, WOOD, { material = Enum.Material.Wood })
+	statue(f, "chainchomper", 3, CFrame.new(post + Vector3.new(12, 14, 0)) * CFrame.Angles(0, math.rad(-70), 0))
+	for i = 1, 6 do
+		ball(f, Vector3.one * 1.6, post + Vector3.new(i * 1.8, 14 + math.sin(i) * 0.6, 0), Color3.fromRGB(70, 70, 80), { material = Enum.Material.Metal })
+	end
+	fence(f, post + Vector3.new(-20, 14, -20), post + Vector3.new(-20, 14, 25), WOOD)
+	-- floating islands with coin rings
+	for i = 1, 4 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local p = o + Vector3.new(math.cos(a) * rng:NextNumber(120, 180), rng:NextNumber(40, 70), math.sin(a) * rng:NextNumber(120, 180))
+		floatingIsland(f, p, rng:NextNumber(10, 16), Color3.fromRGB(100, 200, 80), Color3.fromRGB(150, 120, 90))
+		coinRing(f, p + Vector3.new(0, 8, 0), 6, 8, GOLDC)
+	end
+	-- a cannon in a grass hole
+	local c = o + Vector3.new(95, -14, -95)
+	pillar(f, 1, 12, c, Color3.fromRGB(70, 150, 60))
+	part(f, Vector3.new(7, 3.6, 3.6), CFrame.new(c + Vector3.new(0, 4, 0)) * CFrame.Angles(0, 0, math.rad(60)), BLACK, { shape = "Cylinder", material = Enum.Material.Metal })
+	-- red coins around the field
+	for i = 1, 8 do
+		local a = i / 8 * math.pi * 2
+		part(f, Vector3.new(0.5, 2.6, 2.6), CFrame.new(o + Vector3.new(math.cos(a) * 100, 6, math.sin(a) * 100)) * CFrame.Angles(0, a, math.rad(90)), Color3.fromRGB(255, 40, 40), { shape = "Cylinder", material = Enum.Material.Neon, shadow = false })
+	end
+end
+
+-- Shifting Sand Land: the great pyramid, pillars with blocks on top, quicksand, Klepto circling overhead
+landmarks.desert = function(f, o, rng)
+	local base = o + Vector3.new(0, -14, -170)
+	local size = 120
+	for i = 0, 11 do
+		local w = size * (1 - i / 12)
+		part(f, Vector3.new(w, 7, w), CFrame.new(base + Vector3.new(0, i * 7 + 3.5, 0)), Color3.fromRGB(225, 190, 120):Lerp(Color3.fromRGB(200, 160, 95), (i % 2) * 0.5), { material = Enum.Material.Sandstone, collide = true })
+	end
+	part(f, Vector3.new(10, 10, 10), CFrame.new(base + Vector3.new(0, 12 * 7 + 5, 0)) * CFrame.Angles(0, math.rad(45), 0), GOLDC, { material = Enum.Material.Neon })
+	part(f, Vector3.new(16, 18, 2), CFrame.new(base + Vector3.new(0, 9, size / 2)), Color3.fromRGB(40, 30, 25))
+	for _, x in { -1, 1 } do
+		local p = o + Vector3.new(x * 115, -14, -60)
+		pillar(f, 46, 9, p, Color3.fromRGB(210, 175, 110), { material = Enum.Material.Sandstone })
+		part(f, Vector3.new(12, 6, 12), CFrame.new(p + Vector3.new(0, 49, 0)), Color3.fromRGB(190, 150, 90), { material = Enum.Material.Sandstone })
+	end
+	for _ = 1, 6 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		pillar(f, 0.4, rng:NextNumber(16, 30), o + Vector3.new(math.cos(a) * rng:NextNumber(100, 170), -13.9, math.sin(a) * rng:NextNumber(100, 170)), Color3.fromRGB(150, 110, 60), { material = Enum.Material.Sand, shadow = false })
+	end
+	statue(f, "sandwyvern", 4, CFrame.new(o + Vector3.new(60, 55, -110)) * CFrame.Angles(0, math.rad(200), math.rad(-15)))
+	-- a Tox Box rolling on the dunes
+	local tox = part(f, Vector3.new(12, 12, 12), CFrame.new(o + Vector3.new(-110, -8, 80)), Color3.fromRGB(150, 150, 160), { material = Enum.Material.Slate })
+	signFace(tox, Enum.NormalId.Back, "ಠ_ಠ", BLACK)
+end
+
+-- Snowman's Land: the giant snowman on his mountain, pines, an igloo and a frozen pond, Chill Bully on the ice
+landmarks.frost = function(f, o, rng)
+	local base = o + Vector3.new(30, -14, -165)
+	local top = mountain(f, base, 60, 4, Color3.fromRGB(240, 248, 255), Color3.fromRGB(200, 220, 240))
+	ball(f, Vector3.one * 50, top + Vector3.new(0, 20, 0), WHITE, { material = Enum.Material.Snow })
+	local head = top + Vector3.new(0, 56, 0)
+	ball(f, Vector3.one * 34, head, WHITE, { material = Enum.Material.Snow })
+	for _, x in { -6, 6 } do
+		ball(f, Vector3.new(5, 7, 3), head + Vector3.new(x, 4, 15.5), BLACK)
+	end
+	part(f, Vector3.new(20, 3, 3), CFrame.new(head + Vector3.new(0, -6, 16)), BLACK)
+	part(f, Vector3.new(30, 6, 6), CFrame.new(head + Vector3.new(0, -16, 10)) * CFrame.Angles(0, 0, math.rad(8)), Color3.fromRGB(220, 50, 50), { material = Enum.Material.Fabric })
+	-- frozen pond with Chill Bully
+	local pond = o + Vector3.new(-115, -13.8, 40)
+	pillar(f, 0.4, 60, pond, Color3.fromRGB(170, 220, 255), { material = Enum.Material.Ice })
+	statue(f, "frostgolem", 2.5, CFrame.new(pond + Vector3.new(0, 0.4, 0)) * CFrame.Angles(0, math.rad(80), 0))
+	-- igloo
+	local ig = o + Vector3.new(110, -14, 60)
+	ball(f, Vector3.new(30, 26, 30), ig, Color3.fromRGB(235, 245, 255), { material = Enum.Material.Ice })
+	part(f, Vector3.new(8, 8, 6), CFrame.new(ig + Vector3.new(0, 4, -14)), Color3.fromRGB(40, 50, 70))
+	for _ = 1, 3 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		floatingIsland(f, o + Vector3.new(math.cos(a) * 150, rng:NextNumber(35, 60), math.sin(a) * 150), 12, Color3.fromRGB(240, 248, 255), Color3.fromRGB(150, 170, 200))
+	end
+end
+
+-- Lethal Lava Land: the field is an island in a lava sea, with the volcano, stone platforms and Big Bully's arena
+landmarks.magma = function(f, o, rng)
+	local lava = part(f, Vector3.new(1100, 2, 1100), CFrame.new(o + Vector3.new(0, -13, 0)), Color3.fromRGB(255, 90, 20), { material = Enum.Material.Neon, shadow = false })
+	lava.Transparency = 0.05
+	local v = o + Vector3.new(0, -13, -175)
+	for i = 0, 7 do
+		local r = 70 * (1 - i / 9)
+		pillar(f, 10, r * 2, v + Vector3.new(0, i * 10, 0), Color3.fromRGB(90, 60, 50):Lerp(Color3.fromRGB(60, 40, 35), i / 8), { material = Enum.Material.Basalt, collide = true })
+	end
+	local crater = pillar(f, 2, 26, v + Vector3.new(0, 80, 0), Color3.fromRGB(255, 120, 30), { material = Enum.Material.Neon })
+	emitter(crater, SMOKE, Color3.fromRGB(80, 70, 70), { Rate = 10, Size = NumberSequence.new(10, 30), Speed = NumberRange.new(8, 14), Lifetime = NumberRange.new(4, 6), LightEmission = 0 })
+	emitter(crater, FIRE, Color3.fromRGB(255, 140, 40), { Rate = 20, Size = NumberSequence.new(6, 0), Speed = NumberRange.new(10, 20) })
+	light(crater, Color3.fromRGB(255, 120, 40), 60, 3)
+	-- Big Bully's square arena on the lava
+	local arena = o + Vector3.new(120, -12, 40)
+	part(f, Vector3.new(44, 3, 44), CFrame.new(arena), Color3.fromRGB(110, 100, 100), { material = Enum.Material.Cobblestone })
+	statue(f, "lavatitan", 3, CFrame.new(arena + Vector3.new(0, 1.5, 0)) * CFrame.Angles(0, math.rad(-100), 0))
+	-- stepping platforms and a log in the lava
+	for _ = 1, 8 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(100, 170)
+		part(f, Vector3.new(rng:NextNumber(10, 20), 3, rng:NextNumber(10, 20)), CFrame.new(o + Vector3.new(math.cos(a) * r, -12, math.sin(a) * r)), Color3.fromRGB(120, 110, 100), { material = Enum.Material.Slate })
+	end
+	part(f, Vector3.new(40, 4, 4), CFrame.new(o + Vector3.new(-110, -11.5, -40)) * CFrame.Angles(0, math.rad(30), math.rad(90)), WOOD, { shape = "Cylinder", material = Enum.Material.Wood })
+end
+
+-- Bowser in the Sky: the field floats in the dark sky among platforms, with a giant Bowser statue and his emblem
+landmarks.starcastle = function(f, o, rng)
+	statue(f, "shadowmonarch", 6, CFrame.new(o + Vector3.new(0, 10, -150)) * CFrame.Angles(0, 0, 0))
+	pillar(f, 6, 70, o + Vector3.new(0, 4, -150), Color3.fromRGB(70, 60, 90), { material = Enum.Material.Slate })
+	local emblem = part(f, Vector3.new(30, 30, 1), CFrame.new(o + Vector3.new(0, 70, -190)), Color3.fromRGB(230, 50, 40), { material = Enum.Material.Neon })
+	signFace(emblem, Enum.NormalId.Back, "B", Color3.fromRGB(255, 220, 80))
+	for _ = 1, 10 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(110, 190)
+		local p = o + Vector3.new(math.cos(a) * r, rng:NextNumber(-30, 30), math.sin(a) * r)
+		local w = rng:NextNumber(14, 26)
+		part(f, Vector3.new(w, 3, w), CFrame.new(p), Color3.fromRGB(120, 110, 140), { material = Enum.Material.Slate })
+		part(f, Vector3.new(w + 1, 0.6, w + 1), CFrame.new(p + Vector3.new(0, 1.6, 0)), GOLDC, { material = Enum.Material.Neon, transparency = 0.6, shadow = false })
+		if rng:NextNumber() < 0.5 then
+			coinRing(f, p + Vector3.new(0, 7, 0), 4, 6, Color3.fromRGB(80, 160, 255))
+		end
+	end
+end
+
+-- the field's edge: chunky cliff blocks with a lip in the field's second colour, instead of a flat border
+local function islandEdge(arena: Instance, def: Maps.MapDef, origin: Vector3, half: number, rng: Random)
+	local theme = def.theme
+	local rock = def.id == "frost" and Color3.fromRGB(180, 195, 215) or shade(theme.ground, -0.45)
+	local step = 10
+	for _, side in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
+		for d = -half - step / 2, half + step / 2, step do
+			local x = side[1] ~= 0 and side[1] * (half + 2.5) or d
+			local z = side[2] ~= 0 and side[2] * (half + 2.5) or d
+			local depth = rng:NextNumber(14, 26)
+			local w = step + rng:NextNumber(0, 3)
+			local size = side[1] ~= 0 and Vector3.new(5, depth, w) or Vector3.new(w, depth, 5)
+			part(arena, size, CFrame.new(origin + Vector3.new(x, 0.8 - depth / 2, z)), rock, { material = def.id == "starcastle" and Enum.Material.Slate or Enum.Material.Rock, collide = true })
+			local lip = side[1] ~= 0 and Vector3.new(5.4, 1.2, w + 0.4) or Vector3.new(w + 0.4, 1.2, 5.4)
+			part(arena, lip, CFrame.new(origin + Vector3.new(x, 1.0, z)), def.id == "starcastle" and theme.curb or theme.grass2, { material = def.id == "starcastle" and Enum.Material.Neon or theme.groundMaterial, shadow = false, collide = true })
+		end
+	end
+	-- the island's underside tapers down
+	for i = 1, 4 do
+		local w = half * 2 * (1 - i * 0.18)
+		part(arena, Vector3.new(w, 8, w), CFrame.new(origin + Vector3.new(0, -4 - i * 8, 0)), shade(rock, -i * 0.05), { material = Enum.Material.Rock })
+	end
+end
+
 -- ============================================================ build
 
 -- maps are built from parts only; kept so callers that clear an arena's area still work
@@ -4504,18 +5107,20 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 			part(ground, Vector3.new(tile, 4, tile), CFrame.new(origin + Vector3.new(x, -2, z)), c, { material = theme.groundMaterial, collide = true, query = true, shadow = false })
 		end
 	end
-	-- the field's edge and the cliff under it
-	for _, side in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
-		local along = side[1] == 0
-		local size = along and Vector3.new(half * 2 + 6, 1.2, 3) or Vector3.new(3, 1.2, half * 2 + 6)
-		part(arena, size, CFrame.new(origin + Vector3.new(side[1] * (half + 1.5), 0.6, side[2] * (half + 1.5))), theme.curb, { material = Enum.Material.Cobblestone, collide = true })
-	end
-	part(arena, Vector3.new(half * 2 + 6, 14, half * 2 + 6), CFrame.new(origin + Vector3.new(0, -11, 0)), shade(theme.ground, -0.45), { material = Enum.Material.Rock, collide = true })
+	-- the field's edge and the island under it
+	islandEdge(arena, def, origin, half, rng)
 
 	local world = Instance.new("Folder")
 	world.Name = "Scenery"
 	world.Parent = arena
-	part(world, Vector3.new(1100, 4, 1100), CFrame.new(origin + Vector3.new(0, -16, 0)), shade(theme.grass2, -0.15), { material = theme.groundMaterial, shadow = false, collide = true })
+	-- the ground around the island (the sky castle floats over nothing, the lava land's sea is its landmark)
+	if def.id ~= "starcastle" and def.id ~= "magma" then
+		part(world, Vector3.new(1100, 4, 1100), CFrame.new(origin + Vector3.new(0, -16, 0)), shade(theme.grass2, -0.15), { material = theme.groundMaterial, shadow = false, collide = true })
+	end
+	local landmark = landmarks[def.id]
+	if landmark then
+		landmark(world, origin, rng)
+	end
 	local makeScenery = scenery[def.id]
 	for i = 1, 26 do
 		local a = i / 26 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
@@ -4744,7 +5349,7 @@ function AdminPanel.start()
 		act("win")
 	end, { Parent = battle })
 
-	local sm64 = Ui.inset(scroll, { Size = UDim2.new(1, -12, 0, 150), LayoutOrder = 6 })
+	local sm64 = Ui.inset(scroll, { Size = UDim2.new(1, -12, 0, 220), LayoutOrder = 6 })
 	Ui.title({ Text = "🍄 SM64 models", Size = UDim2.new(1, -20, 0, 24), Position = UDim2.fromOffset(10, 6), MaxText = 20, Parent = sm64 })
 	local modeButton
 	modeButton = Ui.button("Mode: " .. Skins.mode, C.blue, function()
@@ -4752,7 +5357,24 @@ function AdminPanel.start()
 		modeButton.Text = "Mode: " .. Skins.mode
 		Ui.toast("SM64 models rebuilt as " .. Skins.mode, C.green)
 	end, { Size = UDim2.fromOffset(160, 32), Position = UDim2.new(1, -170, 0, 4), MaxText = 16, Parent = sm64 })
-	local status = Ui.text({ Text = "", Size = UDim2.new(1, -20, 1, -40), Position = UDim2.fromOffset(10, 40), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, MaxText = 14, Parent = sm64 })
+	-- the uploaded SM64 audio files' ids
+	local SoundService = game:GetService("SoundService")
+	local idBoxes = {}
+	for i, sheet in { "sm64_music_1", "sm64_music_2", "sm64_sfx" } do
+		local box = numberBox(sm64, tostring(SoundService:GetAttribute(sheet) or ""))
+		box.PlaceholderText = sheet .. " id"
+		box.Size = UDim2.fromOffset(170, 30)
+		box.Position = UDim2.new(0, 10 + (i - 1) * 178, 1, -40)
+		idBoxes[sheet] = box
+	end
+	Ui.button("Save audio ids", C.green, function()
+		local ids = {}
+		for sheet, box in idBoxes do
+			ids[sheet] = tonumber(box.Text:match("%d+") or "")
+		end
+		act("audioIds", ids)
+	end, { Size = UDim2.fromOffset(150, 30), Position = UDim2.new(1, -160, 1, -40), MaxText = 16, Parent = sm64 })
+	local status = Ui.text({ Text = "", Size = UDim2.new(1, -20, 1, -90), Position = UDim2.fromOffset(10, 40), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, MaxText = 14, Parent = sm64 })
 
 	local function toggle()
 		window.Visible = not window.Visible
@@ -5020,6 +5642,15 @@ local FALLBACK: { [string]: { id: string, pitch: number, volume: number } } = {
 	star_appears = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 1.2, volume = 0.6 },
 	power_meter = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 0.9, volume = 0.4 },
 	swish = { id = "rbxasset://sounds/swoosh.wav", pitch = 1.4, volume = 0.3 },
+	throw = { id = "rbxasset://sounds/swoosh.wav", pitch = 1.8, volume = 0.35 },
+	stomped = { id = "rbxasset://sounds/swoosh.wav", pitch = 0.7, volume = 0.4 },
+	spin = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 2.4, volume = 0.25 },
+	flame = { id = "rbxasset://sounds/swoosh.wav", pitch = 0.5, volume = 0.35 },
+	explosion = { id = "rbxasset://sounds/swoosh.wav", pitch = 0.4, volume = 0.5 },
+	pound = { id = "rbxasset://sounds/swoosh.wav", pitch = 0.6, volume = 0.5 },
+	enemy_die = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 0.7, volume = 0.3 },
+	right_answer = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 1.3, volume = 0.4 },
+	coin_spurt = { id = "rbxasset://sounds/electronicpingshort.wav", pitch = 1.8, volume = 0.3 },
 }
 
 local function load()
@@ -5034,6 +5665,11 @@ local function load()
 	end
 	local ids = data.ids or {}
 	local toLoad = {}
+	for _, old in sheets do
+		old:Destroy()
+	end
+	table.clear(sheets)
+	table.clear(clips)
 	for sheet in ids do
 		local id = SoundService:GetAttribute(sheet) or ids[sheet]
 		if type(id) == "string" then
@@ -5196,6 +5832,19 @@ end
 
 function Audio.start()
 	load()
+	-- ids set from the admin panel arrive as SoundService attributes: load again and restart the music
+	SoundService.AttributeChanged:Connect(function()
+		task.defer(function()
+			load()
+			local name = currentName
+			currentName = nil
+			if current then
+				current:Destroy()
+				current = nil
+			end
+			Audio.music(name)
+		end)
+	end)
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if not processed and input.KeyCode == Enum.KeyCode.M then
 			Audio.setMusicMuted(not Audio.musicMuted)
@@ -5657,7 +6306,7 @@ local function refreshHotbar(state)
 		local holder = hotbar:FindFirstChild("Slot" .. i)
 		if m and holder and holder:FindFirstChild("Count") then
 			local def = Units.ById[m.unitId]
-			holder.Count.Text = m.allowed and (m.placed .. "/" .. def.limit .. (state.cash < m.cost and "  need $" .. Ui.formatNumber(m.cost - state.cash) or "")) or "not allowed"
+			holder.Count.Text = m.allowed and (m.placed .. "/" .. (m.limit or def.limit) .. (state.cash < m.cost and "  need $" .. Ui.formatNumber(m.cost - state.cash) or "")) or "not allowed"
 			holder.Count.TextColor3 = state.cash >= m.cost and C.muted or Color3.fromRGB(255, 120, 120)
 			local stroke = holder.Card:FindFirstChildOfClass("UIStroke")
 			if stroke then
@@ -6301,12 +6950,12 @@ function Fx.start()
 		shield = { "boing", 0.6, 0.3 },
 		shock = { "thwomp", 0.7, 0.3 },
 		summon = { "goomba_alert", 0.6, 0.4 },
-		bolt = { "throw", 0.18, 0.12 },
-		bonk = { "stomped", 0.25, 0.12 },
-		cone = { "flame", 0.2, 0.2 },
-		lob = { "explosion", 0.2, 0.25 },
-		slam = { "pound", 0.3, 0.2 },
-		zap = { "spin", 0.2, 0.12 },
+		bolt = { "throw", 0.45, 0.1 },
+		bonk = { "stomped", 0.5, 0.1 },
+		cone = { "flame", 0.45, 0.18 },
+		lob = { "explosion", 0.4, 0.22 },
+		slam = { "pound", 0.55, 0.18 },
+		zap = { "spin", 0.45, 0.1 },
 	}
 	-- the server sends each frame's effects as one list
 	Net.ev("Fx").OnClientEvent:Connect(function(list)
@@ -6323,6 +6972,9 @@ function Fx.start()
 			local sfx = STYLE_SOUNDS[p.style]
 			if sfx then
 				Audio.play(sfx[1], { volume = sfx[2], gap = sfx[3], max = 3 })
+			end
+			if p.style == "placed" and p.radius == 4 then
+				Audio.play("right_answer", { gap = 0.2 })
 			end
 			if p.style == "pop" and p.boss then
 				Audio.play("big_explosion", { gap = 1 })
@@ -6885,8 +7537,9 @@ end
 -- ============================================================ Units
 
 local unitSearch = ""
+local unitCards: { [string]: { card: TextButton, sig: string } } = {}
 local unitFilter = "All"
-local FILTERS = { "All", "Mythic", "Legendary", "Rare", "Common", "Team", "Locked" }
+local FILTERS = { "All", "Mythic", "Legendary", "Epic", "Rare", "Common", "Team", "Locked" }
 
 -- a square icon button for the column beside the unit details
 local function iconButton(parent: Instance, icon: string, color: Color3, order: number, onClick: () -> ())
@@ -6980,24 +7633,53 @@ local function buildUnits()
 			selectedUnit = all[1].uid
 		end
 		countChip:FindFirstChildWhichIsA("TextLabel").Text = #all .. "/" .. Units.InventoryLimit
-		Ui.clear(grid)
+		-- cards are kept per unit and only rebuilt when what they show changes; a card that is filtered out is
+		-- just taken off the grid, so clicking, searching and filtering stay instant
+		local shown = {}
 		for i, e in list do
 			local slot = onTeam(data, e.uid)
-			local card = Ui.unitCard(grid, {
-				unitId = e.u,
-				level = e.l,
-				trait = e.t,
-				price = Stats.placeCost(e.u, e.t),
-				selected = e.uid == selectedUnit,
-				badge = slot and ("TEAM " .. slot) or nil,
-			}, UDim2.new(), function()
-				selectedUnit = e.uid
-				equipMode = false
-				refreshers.Units()
-			end)
-			card.LayoutOrder = i
-			if data.units[e.uid].k then
-				Ui.text({ Text = "🔒", Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, -24, 0, 26), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 16, Outline = 0, ZIndex = 6, Parent = card })
+			local locked = data.units[e.uid].k == true
+			local sig = table.concat({ e.u, tostring(e.l), e.t or "", tostring(slot), tostring(locked) }, "|")
+			local cached = unitCards[e.uid]
+			if not cached or cached.sig ~= sig then
+				if cached then
+					cached.card:Destroy()
+				end
+				local uid = e.uid
+				local card = Ui.unitCard(grid, {
+					unitId = e.u,
+					level = e.l,
+					trait = e.t,
+					price = Stats.placeCost(e.u, e.t),
+					badge = slot and ("TEAM " .. slot) or nil,
+				}, UDim2.new(), function()
+					local old = selectedUnit and unitCards[selectedUnit]
+					if old then
+						Ui.setCardSelected(old.card, false)
+					end
+					selectedUnit = uid
+					equipMode = false
+					refreshers.Units()
+				end)
+				if locked then
+					Ui.icon("lock", "🔒", { Size = UDim2.fromOffset(22, 22), Position = UDim2.new(1, -26, 0, 24), MaxText = 16, ZIndex = 6, Parent = card })
+				end
+				cached = { card = card, sig = sig }
+				unitCards[e.uid] = cached
+			end
+			cached.card.Parent = grid
+			cached.card.LayoutOrder = i
+			Ui.setCardSelected(cached.card, e.uid == selectedUnit)
+			shown[e.uid] = true
+		end
+		for uid, cached in unitCards do
+			if not shown[uid] then
+				if data.units[uid] then
+					cached.card.Parent = nil
+				else
+					cached.card:Destroy()
+					unitCards[uid] = nil
+				end
 			end
 		end
 
@@ -7190,21 +7872,46 @@ local function buildTraits()
 		Parent = content,
 	}, { Ui.list(Enum.FillDirection.Vertical, 6), Ui.padding(6) })
 
-	-- the trait index never changes
-	local order = 0
-	for i = #Rarities.Order, 1, -1 do
-		local r = Rarities.Order[i]
-		order += 1
-		Ui.chip(string.format("%s  %s%%", r, tostring(Rarities.TraitRates[r])), rarityColor(r), { Size = UDim2.new(1, -10, 0, 30), LayoutOrder = order, Parent = index })
-		for _, t in Traits.ByRarity[r] do
-			order += 1
-			local row = Ui.new("Frame", { Size = UDim2.new(1, -10, 0, 46), BackgroundColor3 = C.panelDark, BackgroundTransparency = 0.2, LayoutOrder = order, Parent = index }, { Ui.corner(8) })
-			Ui.text({ Text = t.name, Size = UDim2.new(1, -12, 0, 20), Position = UDim2.fromOffset(8, 3), TextColor3 = Ui.lighten(rarityColor(r), 0.2), MaxText = 16, Parent = row })
-			Ui.text({ Text = t.desc, Size = UDim2.new(1, -12, 0, 16), Position = UDim2.fromOffset(8, 25), TextColor3 = C.muted, MaxText = 13, Outline = 1, Parent = row })
+	-- the trait index: every trait with its own chance, rarest first, and the pity counters for the rainbow ones
+	local pityLabels: { [string]: TextLabel } = {}
+	for i, t in Traits.List do
+		local color = rarityColor(t.rarity)
+		local row = Ui.new("Frame", {
+			Size = UDim2.new(1, -10, 0, 58),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			LayoutOrder = i,
+			Parent = index,
+		}, { Ui.corner(10), Ui.stroke(Ui.darken(color, 0.2), 2), Ui.gradient(Ui.darken(color, 0.55), Color3.fromRGB(16, 12, 30), 90) })
+		if t.rarity == "Mythic" then
+			local g = Ui.new("UIGradient", {
+				Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 90)),
+					ColorSequenceKeypoint.new(0.33, Color3.fromRGB(255, 220, 80)),
+					ColorSequenceKeypoint.new(0.66, Color3.fromRGB(90, 220, 140)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 110, 255)),
+				}),
+			})
+			local name = Ui.text({ Text = t.name, Size = UDim2.new(1, -90, 0, 22), Position = UDim2.fromOffset(10, 4), MaxText = 18, Parent = row })
+			g.Parent = name
+			Ui.spin(g, 90)
+		else
+			Ui.text({ Text = t.name, Size = UDim2.new(1, -90, 0, 22), Position = UDim2.fromOffset(10, 4), TextColor3 = Ui.lighten(color, 0.25), MaxText = 18, Parent = row })
+		end
+		Ui.text({ Text = t.desc, Size = UDim2.new(1, -20, 0, 26), Position = UDim2.fromOffset(10, 28), TextColor3 = C.muted, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, MaxText = 13, Outline = 1, Parent = row })
+		Ui.text({ Text = tostring(t.chance) .. "%", Size = UDim2.fromOffset(74, 22), Position = UDim2.new(1, -82, 0, 4), TextXAlignment = Enum.TextXAlignment.Right, MaxText = 18, Parent = row })
+		if t.pity then
+			pityLabels[t.id] = Ui.text({ Text = "", Size = UDim2.fromOffset(120, 16), Position = UDim2.new(1, -128, 1, -18), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = C.gold, MaxText = 13, Parent = row })
+		end
+	end
+	local function refreshPity()
+		local pity = Store.data and Store.data.traitPity or {}
+		for id, label in pityLabels do
+			label.Text = string.format("Pity: %d/%d", pity[id] or 0, Traits.ById[id].pity)
 		end
 	end
 
 	refreshers.Traits = function()
+		refreshPity()
 		local data = Store.data
 		local list = entries(data)
 		if traitUnit and not data.units[traitUnit] then
@@ -7229,7 +7936,12 @@ local function buildTraits()
 				Ui.stroke(e.uid == traitUnit and Color3.new(1, 1, 1) or C.ink, e.uid == traitUnit and 3 or 2),
 				Ui.gradient(Ui.RarityGradient[def.rarity][1], Ui.RarityGradient[def.rarity][2], 0),
 			})
-			Ui.viewport(e.u, { Size = UDim2.fromOffset(58, 58), Position = UDim2.fromOffset(2, 2) }).Parent = row
+			local unitId = e.u
+			Ui.later(function()
+				if row.Parent then
+					Ui.viewport(unitId, { Size = UDim2.fromOffset(58, 58), Position = UDim2.fromOffset(2, 2) }).Parent = row
+				end
+			end)
 			Ui.text({ Text = Ui.unitName(e.u) .. "  Lvl " .. e.l, Size = UDim2.new(1, -70, 0, 22), Position = UDim2.fromOffset(64, 6), MaxText = 16, Parent = row })
 			Ui.text({
 				Text = trait and trait.name or "no trait",
@@ -7284,7 +7996,7 @@ local function buildTraits()
 		local rollButton
 		rollButton = Ui.button("ROLL TRAIT  🔮" .. Traits.RollCost, C.purple, function()
 			-- rolling replaces the current trait: confirm before throwing away a Legendary or Mythic one
-			if trait and Rarities.Info[trait.rarity].rank >= 3 and not confirming then
+			if trait and Rarities.Info[trait.rarity].rank >= Rarities.Info.Legendary.rank and not confirming then
 				confirming = true
 				rollButton.Text = "Replace " .. trait.name .. "? Tap again"
 				task.delay(3, function()
@@ -8116,6 +8828,9 @@ local function burst(parent: Instance, color: Color3, count: number, z: number)
 	end
 end
 
+local MYTHIC = Rarities.Info.Mythic.rank
+local LEGENDARY = Rarities.Info.Legendary.rank
+
 local function rarityColor(r: string): Color3
 	return Rarities.Info[r].color
 end
@@ -8237,14 +8952,15 @@ function SummonFx.play(results: { any }, done: () -> ())
 	local stages = {
 		{ rank = 1, color = Color3.fromRGB(230, 230, 255), text = "SUMMONING..." },
 		{ rank = 2, color = rarityColor("Rare"), text = "RARE...?" },
-		{ rank = 3, color = rarityColor("Legendary"), text = "LEGENDARY!?" },
-		{ rank = 4, color = rarityColor("Mythic"), text = "M Y T H I C ! ! !" },
+		{ rank = 3, color = rarityColor("Epic"), text = "EPIC!" },
+		{ rank = 4, color = rarityColor("Legendary"), text = "LEGENDARY!?" },
+		{ rank = 5, color = rarityColor("Mythic"), text = "M Y T H I C ! ! !" },
 	}
 	for i, st in stages do
 		if st.rank > bestRank or skipped then
 			break
 		end
-		colorRays(st.color, st.rank == 4)
+		colorRays(st.color, st.rank == MYTHIC)
 		tween(glow, 0.25, { BackgroundColor3 = st.color, Size = UDim2.fromOffset(220 + i * 50, 220 + i * 50) })
 		caption.Text = st.text
 		caption.TextColor3 = st.color
@@ -8269,20 +8985,20 @@ function SummonFx.play(results: { any }, done: () -> ())
 	end)
 	burst(root, rarityColor(best.rarity), 40, 6)
 	Audio.play("star_appears", { volume = 1 })
-	if bestRank >= 4 then
+	if bestRank >= MYTHIC then
 		task.delay(0.4, Audio.play, "voice_yahoo", { gap = 1 })
-	elseif bestRank == 3 then
+	elseif bestRank == LEGENDARY then
 		task.delay(0.4, Audio.play, "voice_yippee", { gap = 1 })
 	end
 	star:Destroy()
 	glow:Destroy()
 	caption:Destroy()
 	spinSpeed = 18
-	colorRays(rarityColor(best.rarity), bestRank == 4)
+	colorRays(rarityColor(best.rarity), bestRank == MYTHIC)
 
 	-- reveal (whatever goes wrong in it, the close button below still appears)
 	local revealed, revealError = pcall(function()
-		local banner = ({ "NICE PULL!", "RARE PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
+		local banner = ({ "NICE PULL!", "RARE PULL!", "EPIC PULL!", "LEGENDARY!", "MYTHIC!!!" })[bestRank]
 		local title = Ui.title({
 			Text = banner,
 			Size = UDim2.fromOffset(700, 70),
@@ -8295,7 +9011,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 			ZIndex = 8,
 			Parent = stage,
 		})
-		if bestRank == 4 then
+		if bestRank == MYTHIC then
 			title.TextColor3 = WHITE
 			Ui.spin(Ui.new("UIGradient", { Color = RAINBOW, Parent = title }), 120)
 		end
@@ -8383,7 +9099,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 				tween(card, 0.16, { Size = UDim2.new(1, 0, 1, -28) }, Enum.EasingStyle.Back)
 				Ui.chip(c.r.rarity, rarityColor(c.r.rarity), { Size = UDim2.fromOffset(100, 22), Position = UDim2.new(0.5, -50, 0, -11), ZIndex = 12, Parent = card })
 				gradeRow(c.slot, c.r.grades, { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 1, -24) })
-				if rank >= 3 then
+				if rank >= Rarities.Info.Epic.rank then
 					-- legendary and mythic cards glow and burst
 					local stroke = card:FindFirstChildWhichIsA("UIStroke") :: UIStroke
 					stroke.Color = rarityColor(c.r.rarity)
@@ -8394,7 +9110,7 @@ function SummonFx.play(results: { any }, done: () -> ())
 							tween(stroke, 0.5, { Thickness = 3 }).Completed:Wait()
 						end
 					end)
-					Audio.play(rank >= 4 and "red_coin" or "one_up", { gap = 0.05 })
+					Audio.play(rank >= MYTHIC and "red_coin" or "one_up", { gap = 0.05 })
 					local pos = c.slot.AbsolutePosition + c.slot.AbsoluteSize / 2 - stage.AbsolutePosition - stage.AbsoluteSize / 2
 					for _ = 1, 14 do
 						local p = Ui.new("Frame", {
@@ -8585,6 +9301,7 @@ local C = Ui.Colors
 Ui.RarityGradient = {
 	Common = { Color3.fromRGB(196, 202, 212), Color3.fromRGB(96, 102, 118) },
 	Rare = { Color3.fromRGB(100, 185, 255), Color3.fromRGB(28, 72, 196) },
+	Epic = { Color3.fromRGB(196, 140, 255), Color3.fromRGB(96, 34, 196) },
 	Legendary = { Color3.fromRGB(255, 222, 80), Color3.fromRGB(232, 112, 16) },
 	Mythic = { Color3.fromRGB(255, 96, 150), Color3.fromRGB(176, 18, 74) },
 }
@@ -8984,6 +9701,30 @@ end
 
 -- ============================================================ unit cards and stats
 
+-- work spread over frames: at most a few jobs per frame (building viewport models is the slow part)
+local laterQueue: { () -> () } = {}
+RunService.Heartbeat:Connect(function()
+	for _ = 1, math.min(4, #laterQueue) do
+		local job = table.remove(laterQueue, 1)
+		local ok, err = pcall(job :: () -> ())
+		if not ok then
+			warn(err)
+		end
+	end
+end)
+function Ui.later(job: () -> ())
+	table.insert(laterQueue, job)
+end
+
+-- marks a unit card made by Ui.unitCard as selected or not
+function Ui.setCardSelected(card: GuiObject, selected: boolean)
+	local stroke = card:FindFirstChildWhichIsA("UIStroke")
+	if stroke then
+		stroke.Color = selected and Color3.new(1, 1, 1) or C.ink
+		stroke.Thickness = selected and 4 or 3
+	end
+end
+
 function Ui.unitName(unitId: string): string
 	return Skins.displayName(unitId) or ModelFactory.displayName(unitId, Units.ById[unitId].name)
 end
@@ -9096,7 +9837,12 @@ function Ui.unitCard(parent: Instance, info: CardInfo, size: UDim2, onClick: (()
 		BackgroundTransparency = 0.82,
 		Parent = card,
 	}, { Ui.corner(9) })
-	Ui.viewport(info.unitId, { Size = UDim2.new(1, 0, 1, -12), Position = UDim2.fromOffset(0, 2), ZIndex = 2, Parent = card })
+	-- the model preview is built a moment later (a few per frame), so big grids open without freezing
+	Ui.later(function()
+		if card.Parent then
+			Ui.viewport(info.unitId, { Size = UDim2.new(1, 0, 1, -12), Position = UDim2.fromOffset(0, 2), ZIndex = 2, Parent = card })
+		end
+	end)
 	-- name strip
 	local strip = Ui.new("Frame", {
 		Size = UDim2.new(1, -6, 0, 20),

@@ -228,6 +228,9 @@ function Battle:damage(enemy, amount: number, tower, applyEffects: boolean): num
 	end
 	local s = tower and tower.stats
 	local d = amount
+	if s and applyEffects and s.critChance > 0 and math.random() < s.critChance then
+		d *= s.critDamage
+	end
 	if s then
 		if enemy.flying then
 			d *= s.airMult
@@ -249,13 +252,18 @@ function Battle:damage(enemy, amount: number, tower, applyEffects: boolean): num
 			enemy.slowUntil = math.max(enemy.slowUntil, self.time + s.slow.dur)
 		end
 		if s.burn then
-			enemy.burnDps = math.max(self.time < enemy.burnUntil and enemy.burnDps or 0, amount * s.burn.dps)
+			enemy.burnDps = math.max(self.time < enemy.burnUntil and enemy.burnDps or 0, amount * s.burn.dps * s.dotMult)
 			enemy.burnUntil = self.time + s.burn.dur
 			enemy.burnSource = tower
 		end
 		if s.stun and not enemy.def.boss and math.random() < s.stun.chance then
 			enemy.stunUntil = math.max(enemy.stunUntil, self.time + s.stun.dur)
 		end
+	end
+
+	if s and s.execute > 0 and enemy.hp > 0 and not enemy.def.boss and math.random() < s.execute then
+		d += enemy.hp
+		enemy.hp = 0
 	end
 
 	if enemy.hp <= 0 then
@@ -586,8 +594,9 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 	if not rarityOk(self, member.unitId) then
 		return false, "Only " .. self.mods.onlyRarity .. " units are allowed in this challenge"
 	end
-	if def.limit and self:towerCount(member.unitId) >= def.limit then
-		return false, def.name .. " limit reached (" .. def.limit .. ")"
+	local limit = Stats.limit(member.unitId, member.trait)
+	if self:towerCount(member.unitId) >= limit then
+		return false, def.name .. " limit reached (" .. limit .. ")"
 	end
 	if self.mods.maxUnits and self:towerCount() >= self.mods.maxUnits then
 		return false, "Unit limit reached (" .. self.mods.maxUnits .. ")"
@@ -662,7 +671,7 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 	-- Legendary and Mythic units get a rarity-coloured outline and a sparkle aura (only these: Roblox draws at
 	-- most 31 Highlights, and each one costs a render pass)
 	local rank = Rarities.Info[def.rarity].rank
-	if rank >= 3 then
+	if rank >= Rarities.Info.Legendary.rank then
 		local outline = Instance.new("Highlight")
 		outline.FillTransparency = 1
 		outline.OutlineTransparency = 0
@@ -673,7 +682,7 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 		aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
 		aura.Color = ColorSequence.new(Rarities.Info[def.rarity].color)
 		aura.LightEmission = 1
-		aura.Rate = rank >= 4 and 14 or 7
+		aura.Rate = rank >= Rarities.Info.Mythic.rank and 14 or 7
 		aura.Lifetime = NumberRange.new(0.8, 1.4)
 		aura.Speed = NumberRange.new(1.5, 3)
 		aura.SpreadAngle = Vector2.new(180, 180)
@@ -924,6 +933,7 @@ function Battle:snapshot()
 				level = m.level,
 				grades = m.grades,
 				placed = self:towerCount(m.unitId),
+				limit = Stats.limit(m.unitId, m.trait),
 				cost = Stats.placeCost(m.unitId, m.trait),
 				allowed = rarityOk(self, m.unitId),
 			}

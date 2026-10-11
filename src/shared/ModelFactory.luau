@@ -255,6 +255,101 @@ designs.starprincess = function()
 	}, eyes(4.9, -0.8, 0.3, 0.4, Color3.fromRGB(40, 90, 220)))
 end
 
+-- ===== added units =====
+designs.webskitter = function()
+	local brown = Color3.fromRGB(130, 80, 45)
+	local specs = {
+		P("Ball", Vector3.new(3.0, 2.2, 3.0), Vector3.new(0, 1.9, 0), brown),
+		P("Ball", Vector3.new(1.2, 0.5, 0.6), Vector3.new(0, 1.4, -1.4), BLACK),
+	}
+	for _, x in { -1, 1 } do
+		for _, z in { -0.8, 0.8 } do
+			table.insert(specs, P("Cylinder", Vector3.new(2.2, 0.35, 0.35), Vector3.new(x * 1.7, 1.0, z), Color3.fromRGB(90, 55, 30), { r = Vector3.new(0, 0, x * 50) }))
+		end
+	end
+	return concat(specs, eyes(2.9, -0.9, 0.55, 0.9))
+end
+designs.puffshot = function()
+	local red = Color3.fromRGB(220, 50, 60)
+	return concat({
+		P("Ball", Vector3.new(2.8, 2.8, 2.8), Vector3.new(0, 2.6, 0), red),
+		P("Ball", Vector3.new(2.2, 1.6, 0.8), Vector3.new(0, 2.6, -1.1), Color3.fromRGB(150, 150, 160), { m = Enum.Material.Metal }),
+		P("Cylinder", Vector3.new(1.2, 0.8, 0.8), Vector3.new(0, 2.3, -1.8), Color3.fromRGB(110, 110, 120), { r = Vector3.new(0, 90, 0), m = Enum.Material.Metal }),
+		P("Ball", Vector3.new(1.0, 0.4, 0.6), Vector3.new(-1.4, 1.3, 0), red),
+		P("Ball", Vector3.new(1.0, 0.4, 0.6), Vector3.new(1.4, 1.3, 0), red),
+	}, eyes(3.0, -1.4, 0.45, 0.5))
+end
+designs.crusherblock = function()
+	local stone = Color3.fromRGB(120, 140, 185)
+	local specs = {
+		P("Block", Vector3.new(4.6, 5.0, 3.0), Vector3.new(0, 3.3, 0), stone, { m = Enum.Material.Slate }),
+		P("Block", Vector3.new(2.4, 0.5, 0.2), Vector3.new(0, 2.0, -1.55), WHITE),
+	}
+	for _, x in { -2.3, 2.3 } do
+		for _, y in { 1.4, 3.3, 5.2 } do
+			table.insert(specs, P("Wedge", Vector3.new(0.6, 0.7, 0.7), Vector3.new(x * 1.1, y, 0), Color3.fromRGB(90, 105, 140), { r = Vector3.new(0, 0, x > 0 and -90 or 90) }))
+		end
+	end
+	return concat(specs, eyes(4.0, -1.55, 0.9, 0.9), angryBrows(4.9, -1.6, 0.9, 1.2))
+end
+designs.voltorb = function()
+	return concat({
+		P("Ball", Vector3.new(2.8, 2.8, 2.8), Vector3.new(0, 2.6, 0), BLACK, { m = Enum.Material.Metal }),
+		P("Cylinder", Vector3.new(0.2, 4.0, 4.0), Vector3.new(0, 2.6, 0), Color3.fromRGB(150, 200, 255), { m = Enum.Material.Neon, t = 0.4 }),
+		P("Cylinder", Vector3.new(0.2, 4.0, 4.0), Vector3.new(0, 2.6, 0), Color3.fromRGB(150, 200, 255), { r = Vector3.new(0, 90, 0), m = Enum.Material.Neon, t = 0.4 }),
+		P("Block", Vector3.new(1.0, 0.3, 0.2), Vector3.new(0, 2.0, -1.35), WHITE),
+	}, eyes(3.0, -1.25, 0.5, 0.7))
+end
+designs.burrowbomber = function()
+	local fur = Color3.fromRGB(110, 75, 50)
+	return concat({
+		P("Cylinder", Vector3.new(0.6, 4.0, 4.0), Vector3.new(0, 0.3, 0), Color3.fromRGB(120, 85, 50), { r = Vector3.new(0, 0, 90), m = Enum.Material.Ground }),
+		P("Ball", Vector3.new(2.8, 3.0, 2.6), Vector3.new(0, 2.0, 0), fur),
+		P("Ball", Vector3.new(2.0, 1.6, 1.0), Vector3.new(0, 2.2, -1.0), Color3.fromRGB(235, 200, 160)),
+		P("Ball", Vector3.new(0.7, 0.5, 0.5), Vector3.new(0, 2.5, -1.55), Color3.fromRGB(240, 120, 150)),
+		P("Ball", Vector3.new(0.8, 0.5, 1.0), Vector3.new(-1.4, 1.2, -0.8), Color3.fromRGB(235, 200, 160)),
+		P("Ball", Vector3.new(0.8, 0.5, 1.0), Vector3.new(1.4, 1.2, -0.8), Color3.fromRGB(235, 200, 160)),
+	}, eyes(3.0, -1.2, 0.45, 0.35))
+end
+designs.bananabandit = function()
+	local fur = Color3.fromRGB(150, 95, 55)
+	local face = Color3.fromRGB(240, 205, 165)
+	return concat({
+		P("Ball", Vector3.new(2.0, 2.2, 1.8), Vector3.new(0, 1.6, 0), fur),
+		P("Ball", Vector3.new(2.2, 2.0, 2.0), Vector3.new(0, 3.4, 0), fur),
+		P("Ball", Vector3.new(1.6, 1.4, 0.8), Vector3.new(0, 3.2, -0.8), face),
+		P("Ball", Vector3.new(0.8, 0.8, 0.3), Vector3.new(-1.2, 3.7, 0), face),
+		P("Ball", Vector3.new(0.8, 0.8, 0.3), Vector3.new(1.2, 3.7, 0), face),
+		P("Cylinder", Vector3.new(2.0, 0.3, 0.3), Vector3.new(0, 1.3, 1.3), fur, { r = Vector3.new(0, 90, 60) }),
+		P("Cylinder", Vector3.new(1.6, 0.4, 0.4), Vector3.new(1.3, 2.2, -0.6), Color3.fromRGB(255, 225, 60), { r = Vector3.new(0, 0, 30) }),
+	}, feet(fur, 0.6, 0.7), eyes(3.6, -1.0, 0.35, 0.4))
+end
+designs.grapplebot = function()
+	local purple = Color3.fromRGB(150, 70, 200)
+	return concat({
+		P("Ball", Vector3.new(3.2, 3.0, 3.0), Vector3.new(0, 2.4, 0), purple, { m = Enum.Material.Metal }),
+		P("Cylinder", Vector3.new(2.6, 0.5, 0.5), Vector3.new(-2.3, 2.6, -0.4), purple, { r = Vector3.new(0, 30, 0) }),
+		P("Cylinder", Vector3.new(2.6, 0.5, 0.5), Vector3.new(2.3, 2.6, -0.4), purple, { r = Vector3.new(0, -30, 0) }),
+		P("Ball", Vector3.new(1.0, 1.0, 1.0), Vector3.new(-3.4, 2.6, -1.0), Color3.fromRGB(230, 180, 60)),
+		P("Ball", Vector3.new(1.0, 1.0, 1.0), Vector3.new(3.4, 2.6, -1.0), Color3.fromRGB(230, 180, 60)),
+		P("Cylinder", Vector3.new(1.6, 0.2, 0.2), Vector3.new(0, 4.6, 0), BLACK, { r = Vector3.new(0, 0, 90) }),
+		P("Ball", Vector3.new(0.6, 0.6, 0.6), Vector3.new(0, 5.4, 0), Color3.fromRGB(255, 80, 80), { m = Enum.Material.Neon }),
+	}, feet(Color3.fromRGB(230, 180, 60), 0.9, 0.9), eyes(2.9, -1.35, 0.55, 0.7))
+end
+designs.dinopal = function()
+	local green = Color3.fromRGB(80, 200, 80)
+	return concat({
+		P("Ball", Vector3.new(2.4, 2.6, 2.4), Vector3.new(0, 2.0, 0.2), green),
+		P("Ball", Vector3.new(1.8, 2.0, 1.0), Vector3.new(0, 2.0, -0.8), WHITE),
+		P("Ball", Vector3.new(2.0, 1.0, 1.6), Vector3.new(0, 2.8, 0.6), Color3.fromRGB(220, 40, 40)),
+		P("Ball", Vector3.new(2.2, 2.0, 2.2), Vector3.new(0, 4.4, -0.4), green),
+		P("Ball", Vector3.new(2.0, 1.4, 1.8), Vector3.new(0, 4.1, -1.6), green),
+		P("Ball", Vector3.new(0.9, 0.6, 0.6), Vector3.new(0, 4.4, -0.2), Color3.fromRGB(240, 100, 40)),
+		P("Ball", Vector3.new(1.0, 0.7, 1.4), Vector3.new(-0.7, 0.35, -0.2), Color3.fromRGB(240, 120, 40)),
+		P("Ball", Vector3.new(1.0, 0.7, 1.4), Vector3.new(0.7, 0.35, -0.2), Color3.fromRGB(240, 120, 40)),
+	}, eyes(5.2, -0.9, 0.4, 0.6))
+end
+
 -- ===== enemies =====
 designs.grumble = function()
 	return mushroom(Color3.fromRGB(140, 80, 40), Color3.fromRGB(170, 110, 60), Color3.fromRGB(240, 210, 170), BLACK, true)

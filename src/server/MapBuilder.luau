@@ -1,6 +1,7 @@
 -- Builds a campaign map out of parts at an arena origin: the play field (tiled ground, a curbed path, themed
 -- landmarks), the scenery around it, the enemy portal and your castle.
 local Maps = require(game.ReplicatedStorage.Shared.Maps)
+local ModelFactory = require(game.ReplicatedStorage.Shared.ModelFactory)
 
 local MapBuilder = {}
 
@@ -122,6 +123,7 @@ end
 -- ============================================================ decorations
 
 local WHITE = Color3.fromRGB(250, 250, 250)
+local BLACK = Color3.fromRGB(25, 25, 30)
 
 local decor: { [string]: (Instance, Vector3, number, Random) -> () } = {}
 
@@ -431,6 +433,220 @@ local function castle(parent: Instance, pos: Vector3, yaw: number)
 	m.Parent = parent
 end
 
+-- ============================================================ landmarks
+-- Each map is dressed as an SM64 level: a big set piece behind the field, smaller props around it, and one of the
+-- game's characters as a giant statue (in the private build it shows as the real SM64 model).
+
+local WOOD = Color3.fromRGB(140, 95, 55)
+local GOLDC = Color3.fromRGB(255, 205, 40)
+
+local function statue(parent: Instance, key: string, scale: number, cf: CFrame)
+	local ok, model = pcall(ModelFactory.build, key, scale, true)
+	if ok and model then
+		model.Name = "Statue_" .. key
+		model:PivotTo(cf)
+		model.Parent = parent
+	end
+end
+
+local function coinRing(f: Instance, center: Vector3, radius: number, count: number, color: Color3)
+	for i = 1, count do
+		local a = i / count * math.pi * 2
+		local c = part(f, Vector3.new(0.5, 2.6, 2.6), CFrame.new(center + Vector3.new(math.cos(a) * radius, 0, math.sin(a) * radius)) * CFrame.Angles(0, a, 0) * CFrame.Angles(0, 0, math.rad(90)), color, { shape = "Cylinder", material = Enum.Material.Neon, shadow = false })
+		c.Transparency = 0.05
+	end
+end
+
+local function fence(f: Instance, a: Vector3, b: Vector3, color: Color3)
+	local len = (b - a).Magnitude
+	local cf = CFrame.lookAt((a + b) / 2, b)
+	part(f, Vector3.new(0.4, 0.4, len), cf + Vector3.new(0, 2.2, 0), color, { material = Enum.Material.Wood })
+	part(f, Vector3.new(0.4, 0.4, len), cf + Vector3.new(0, 1.2, 0), color, { material = Enum.Material.Wood })
+	for d = 0, len, 4 do
+		part(f, Vector3.new(0.7, 2.8, 0.7), CFrame.new(a + (b - a).Unit * d + Vector3.new(0, 1.4, 0)), shade(color, -0.1), { material = Enum.Material.Wood })
+	end
+end
+
+-- a round floating island: a grass disc on a stack of shrinking rock discs
+local function floatingIsland(f: Instance, top: Vector3, radius: number, grass: Color3, rock: Color3)
+	pillar(f, 1.2, radius * 2, top - Vector3.new(0, 1.2, 0), grass, { material = Enum.Material.Grass })
+	for i = 1, 4 do
+		local r = radius * (1 - i * 0.2)
+		pillar(f, 2.4, r * 2, top - Vector3.new(0, 1.2 + i * 2.4, 0), shade(rock, -i * 0.05), { material = Enum.Material.Rock })
+	end
+end
+
+-- a tiered mountain of stacked discs with a path winding up it
+local function mountain(f: Instance, base: Vector3, radius: number, tiers: number, color: Color3, pathColor: Color3)
+	local h = 0
+	for i = 0, tiers - 1 do
+		local r = radius * (1 - i / (tiers + 1))
+		local th = 9
+		pillar(f, th, r * 2, base + Vector3.new(0, h, 0), shade(color, (i % 2) * 0.06), { material = Enum.Material.Grass, collide = true })
+		-- a ledge path around each tier
+		for k = 0, 9 do
+			local a = k / 10 * math.pi * 2 + i
+			part(f, Vector3.new(4, 0.4, r * 0.62), CFrame.new(base + Vector3.new(math.cos(a) * r * 0.86, h + th + 0.2, math.sin(a) * r * 0.86)) * CFrame.Angles(0, -a, 0), pathColor, { material = Enum.Material.Sand, shadow = false })
+		end
+		h += th
+	end
+	return base + Vector3.new(0, h, 0)
+end
+
+local landmarks: { [string]: (Instance, Vector3, Random) -> () } = {}
+
+-- Bob-omb Battlefield: the mountain with King Bob-omb on top, Chain Chomp on its post, floating islands, a cannon
+landmarks.meadow = function(f, o, rng)
+	local top = mountain(f, o + Vector3.new(0, -14, -150), 70, 6, Color3.fromRGB(90, 180, 70), Color3.fromRGB(200, 165, 110))
+	statue(f, "kinggrumble", 4, CFrame.new(top) * CFrame.Angles(0, 0, 0))
+	pillar(f, 14, 0.6, top + Vector3.new(10, 0, 0), WHITE)
+	part(f, Vector3.new(0.2, 4, 6), CFrame.new(top + Vector3.new(10, 12, 3)), Color3.fromRGB(230, 40, 40), { material = Enum.Material.Fabric })
+	-- Chain Chomp on its post with a gate, off the left of the field
+	local post = o + Vector3.new(-105, -14, 25)
+	pillar(f, 30, 3, post, WOOD, { material = Enum.Material.Wood })
+	statue(f, "chainchomper", 3, CFrame.new(post + Vector3.new(12, 14, 0)) * CFrame.Angles(0, math.rad(-70), 0))
+	for i = 1, 6 do
+		ball(f, Vector3.one * 1.6, post + Vector3.new(i * 1.8, 14 + math.sin(i) * 0.6, 0), Color3.fromRGB(70, 70, 80), { material = Enum.Material.Metal })
+	end
+	fence(f, post + Vector3.new(-20, 14, -20), post + Vector3.new(-20, 14, 25), WOOD)
+	-- floating islands with coin rings
+	for i = 1, 4 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local p = o + Vector3.new(math.cos(a) * rng:NextNumber(120, 180), rng:NextNumber(40, 70), math.sin(a) * rng:NextNumber(120, 180))
+		floatingIsland(f, p, rng:NextNumber(10, 16), Color3.fromRGB(100, 200, 80), Color3.fromRGB(150, 120, 90))
+		coinRing(f, p + Vector3.new(0, 8, 0), 6, 8, GOLDC)
+	end
+	-- a cannon in a grass hole
+	local c = o + Vector3.new(95, -14, -95)
+	pillar(f, 1, 12, c, Color3.fromRGB(70, 150, 60))
+	part(f, Vector3.new(7, 3.6, 3.6), CFrame.new(c + Vector3.new(0, 4, 0)) * CFrame.Angles(0, 0, math.rad(60)), BLACK, { shape = "Cylinder", material = Enum.Material.Metal })
+	-- red coins around the field
+	for i = 1, 8 do
+		local a = i / 8 * math.pi * 2
+		part(f, Vector3.new(0.5, 2.6, 2.6), CFrame.new(o + Vector3.new(math.cos(a) * 100, 6, math.sin(a) * 100)) * CFrame.Angles(0, a, math.rad(90)), Color3.fromRGB(255, 40, 40), { shape = "Cylinder", material = Enum.Material.Neon, shadow = false })
+	end
+end
+
+-- Shifting Sand Land: the great pyramid, pillars with blocks on top, quicksand, Klepto circling overhead
+landmarks.desert = function(f, o, rng)
+	local base = o + Vector3.new(0, -14, -170)
+	local size = 120
+	for i = 0, 11 do
+		local w = size * (1 - i / 12)
+		part(f, Vector3.new(w, 7, w), CFrame.new(base + Vector3.new(0, i * 7 + 3.5, 0)), Color3.fromRGB(225, 190, 120):Lerp(Color3.fromRGB(200, 160, 95), (i % 2) * 0.5), { material = Enum.Material.Sandstone, collide = true })
+	end
+	part(f, Vector3.new(10, 10, 10), CFrame.new(base + Vector3.new(0, 12 * 7 + 5, 0)) * CFrame.Angles(0, math.rad(45), 0), GOLDC, { material = Enum.Material.Neon })
+	part(f, Vector3.new(16, 18, 2), CFrame.new(base + Vector3.new(0, 9, size / 2)), Color3.fromRGB(40, 30, 25))
+	for _, x in { -1, 1 } do
+		local p = o + Vector3.new(x * 115, -14, -60)
+		pillar(f, 46, 9, p, Color3.fromRGB(210, 175, 110), { material = Enum.Material.Sandstone })
+		part(f, Vector3.new(12, 6, 12), CFrame.new(p + Vector3.new(0, 49, 0)), Color3.fromRGB(190, 150, 90), { material = Enum.Material.Sandstone })
+	end
+	for _ = 1, 6 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		pillar(f, 0.4, rng:NextNumber(16, 30), o + Vector3.new(math.cos(a) * rng:NextNumber(100, 170), -13.9, math.sin(a) * rng:NextNumber(100, 170)), Color3.fromRGB(150, 110, 60), { material = Enum.Material.Sand, shadow = false })
+	end
+	statue(f, "sandwyvern", 4, CFrame.new(o + Vector3.new(60, 55, -110)) * CFrame.Angles(0, math.rad(200), math.rad(-15)))
+	-- a Tox Box rolling on the dunes
+	local tox = part(f, Vector3.new(12, 12, 12), CFrame.new(o + Vector3.new(-110, -8, 80)), Color3.fromRGB(150, 150, 160), { material = Enum.Material.Slate })
+	signFace(tox, Enum.NormalId.Back, "ಠ_ಠ", BLACK)
+end
+
+-- Snowman's Land: the giant snowman on his mountain, pines, an igloo and a frozen pond, Chill Bully on the ice
+landmarks.frost = function(f, o, rng)
+	local base = o + Vector3.new(30, -14, -165)
+	local top = mountain(f, base, 60, 4, Color3.fromRGB(240, 248, 255), Color3.fromRGB(200, 220, 240))
+	ball(f, Vector3.one * 50, top + Vector3.new(0, 20, 0), WHITE, { material = Enum.Material.Snow })
+	local head = top + Vector3.new(0, 56, 0)
+	ball(f, Vector3.one * 34, head, WHITE, { material = Enum.Material.Snow })
+	for _, x in { -6, 6 } do
+		ball(f, Vector3.new(5, 7, 3), head + Vector3.new(x, 4, 15.5), BLACK)
+	end
+	part(f, Vector3.new(20, 3, 3), CFrame.new(head + Vector3.new(0, -6, 16)), BLACK)
+	part(f, Vector3.new(30, 6, 6), CFrame.new(head + Vector3.new(0, -16, 10)) * CFrame.Angles(0, 0, math.rad(8)), Color3.fromRGB(220, 50, 50), { material = Enum.Material.Fabric })
+	-- frozen pond with Chill Bully
+	local pond = o + Vector3.new(-115, -13.8, 40)
+	pillar(f, 0.4, 60, pond, Color3.fromRGB(170, 220, 255), { material = Enum.Material.Ice })
+	statue(f, "frostgolem", 2.5, CFrame.new(pond + Vector3.new(0, 0.4, 0)) * CFrame.Angles(0, math.rad(80), 0))
+	-- igloo
+	local ig = o + Vector3.new(110, -14, 60)
+	ball(f, Vector3.new(30, 26, 30), ig, Color3.fromRGB(235, 245, 255), { material = Enum.Material.Ice })
+	part(f, Vector3.new(8, 8, 6), CFrame.new(ig + Vector3.new(0, 4, -14)), Color3.fromRGB(40, 50, 70))
+	for _ = 1, 3 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		floatingIsland(f, o + Vector3.new(math.cos(a) * 150, rng:NextNumber(35, 60), math.sin(a) * 150), 12, Color3.fromRGB(240, 248, 255), Color3.fromRGB(150, 170, 200))
+	end
+end
+
+-- Lethal Lava Land: the field is an island in a lava sea, with the volcano, stone platforms and Big Bully's arena
+landmarks.magma = function(f, o, rng)
+	local lava = part(f, Vector3.new(1100, 2, 1100), CFrame.new(o + Vector3.new(0, -13, 0)), Color3.fromRGB(255, 90, 20), { material = Enum.Material.Neon, shadow = false })
+	lava.Transparency = 0.05
+	local v = o + Vector3.new(0, -13, -175)
+	for i = 0, 7 do
+		local r = 70 * (1 - i / 9)
+		pillar(f, 10, r * 2, v + Vector3.new(0, i * 10, 0), Color3.fromRGB(90, 60, 50):Lerp(Color3.fromRGB(60, 40, 35), i / 8), { material = Enum.Material.Basalt, collide = true })
+	end
+	local crater = pillar(f, 2, 26, v + Vector3.new(0, 80, 0), Color3.fromRGB(255, 120, 30), { material = Enum.Material.Neon })
+	emitter(crater, SMOKE, Color3.fromRGB(80, 70, 70), { Rate = 10, Size = NumberSequence.new(10, 30), Speed = NumberRange.new(8, 14), Lifetime = NumberRange.new(4, 6), LightEmission = 0 })
+	emitter(crater, FIRE, Color3.fromRGB(255, 140, 40), { Rate = 20, Size = NumberSequence.new(6, 0), Speed = NumberRange.new(10, 20) })
+	light(crater, Color3.fromRGB(255, 120, 40), 60, 3)
+	-- Big Bully's square arena on the lava
+	local arena = o + Vector3.new(120, -12, 40)
+	part(f, Vector3.new(44, 3, 44), CFrame.new(arena), Color3.fromRGB(110, 100, 100), { material = Enum.Material.Cobblestone })
+	statue(f, "lavatitan", 3, CFrame.new(arena + Vector3.new(0, 1.5, 0)) * CFrame.Angles(0, math.rad(-100), 0))
+	-- stepping platforms and a log in the lava
+	for _ = 1, 8 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(100, 170)
+		part(f, Vector3.new(rng:NextNumber(10, 20), 3, rng:NextNumber(10, 20)), CFrame.new(o + Vector3.new(math.cos(a) * r, -12, math.sin(a) * r)), Color3.fromRGB(120, 110, 100), { material = Enum.Material.Slate })
+	end
+	part(f, Vector3.new(40, 4, 4), CFrame.new(o + Vector3.new(-110, -11.5, -40)) * CFrame.Angles(0, math.rad(30), math.rad(90)), WOOD, { shape = "Cylinder", material = Enum.Material.Wood })
+end
+
+-- Bowser in the Sky: the field floats in the dark sky among platforms, with a giant Bowser statue and his emblem
+landmarks.starcastle = function(f, o, rng)
+	statue(f, "shadowmonarch", 6, CFrame.new(o + Vector3.new(0, 10, -150)) * CFrame.Angles(0, 0, 0))
+	pillar(f, 6, 70, o + Vector3.new(0, 4, -150), Color3.fromRGB(70, 60, 90), { material = Enum.Material.Slate })
+	local emblem = part(f, Vector3.new(30, 30, 1), CFrame.new(o + Vector3.new(0, 70, -190)), Color3.fromRGB(230, 50, 40), { material = Enum.Material.Neon })
+	signFace(emblem, Enum.NormalId.Back, "B", Color3.fromRGB(255, 220, 80))
+	for _ = 1, 10 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(110, 190)
+		local p = o + Vector3.new(math.cos(a) * r, rng:NextNumber(-30, 30), math.sin(a) * r)
+		local w = rng:NextNumber(14, 26)
+		part(f, Vector3.new(w, 3, w), CFrame.new(p), Color3.fromRGB(120, 110, 140), { material = Enum.Material.Slate })
+		part(f, Vector3.new(w + 1, 0.6, w + 1), CFrame.new(p + Vector3.new(0, 1.6, 0)), GOLDC, { material = Enum.Material.Neon, transparency = 0.6, shadow = false })
+		if rng:NextNumber() < 0.5 then
+			coinRing(f, p + Vector3.new(0, 7, 0), 4, 6, Color3.fromRGB(80, 160, 255))
+		end
+	end
+end
+
+-- the field's edge: chunky cliff blocks with a lip in the field's second colour, instead of a flat border
+local function islandEdge(arena: Instance, def: Maps.MapDef, origin: Vector3, half: number, rng: Random)
+	local theme = def.theme
+	local rock = def.id == "frost" and Color3.fromRGB(180, 195, 215) or shade(theme.ground, -0.45)
+	local step = 10
+	for _, side in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
+		for d = -half - step / 2, half + step / 2, step do
+			local x = side[1] ~= 0 and side[1] * (half + 2.5) or d
+			local z = side[2] ~= 0 and side[2] * (half + 2.5) or d
+			local depth = rng:NextNumber(14, 26)
+			local w = step + rng:NextNumber(0, 3)
+			local size = side[1] ~= 0 and Vector3.new(5, depth, w) or Vector3.new(w, depth, 5)
+			part(arena, size, CFrame.new(origin + Vector3.new(x, 0.8 - depth / 2, z)), rock, { material = def.id == "starcastle" and Enum.Material.Slate or Enum.Material.Rock, collide = true })
+			local lip = side[1] ~= 0 and Vector3.new(5.4, 1.2, w + 0.4) or Vector3.new(w + 0.4, 1.2, 5.4)
+			part(arena, lip, CFrame.new(origin + Vector3.new(x, 1.0, z)), def.id == "starcastle" and theme.curb or theme.grass2, { material = def.id == "starcastle" and Enum.Material.Neon or theme.groundMaterial, shadow = false, collide = true })
+		end
+	end
+	-- the island's underside tapers down
+	for i = 1, 4 do
+		local w = half * 2 * (1 - i * 0.18)
+		part(arena, Vector3.new(w, 8, w), CFrame.new(origin + Vector3.new(0, -4 - i * 8, 0)), shade(rock, -i * 0.05), { material = Enum.Material.Rock })
+	end
+end
+
 -- ============================================================ build
 
 -- maps are built from parts only; kept so callers that clear an arena's area still work
@@ -476,18 +692,20 @@ function MapBuilder.build(def: Maps.MapDef, origin: Vector3, seed: number): (Mod
 			part(ground, Vector3.new(tile, 4, tile), CFrame.new(origin + Vector3.new(x, -2, z)), c, { material = theme.groundMaterial, collide = true, query = true, shadow = false })
 		end
 	end
-	-- the field's edge and the cliff under it
-	for _, side in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
-		local along = side[1] == 0
-		local size = along and Vector3.new(half * 2 + 6, 1.2, 3) or Vector3.new(3, 1.2, half * 2 + 6)
-		part(arena, size, CFrame.new(origin + Vector3.new(side[1] * (half + 1.5), 0.6, side[2] * (half + 1.5))), theme.curb, { material = Enum.Material.Cobblestone, collide = true })
-	end
-	part(arena, Vector3.new(half * 2 + 6, 14, half * 2 + 6), CFrame.new(origin + Vector3.new(0, -11, 0)), shade(theme.ground, -0.45), { material = Enum.Material.Rock, collide = true })
+	-- the field's edge and the island under it
+	islandEdge(arena, def, origin, half, rng)
 
 	local world = Instance.new("Folder")
 	world.Name = "Scenery"
 	world.Parent = arena
-	part(world, Vector3.new(1100, 4, 1100), CFrame.new(origin + Vector3.new(0, -16, 0)), shade(theme.grass2, -0.15), { material = theme.groundMaterial, shadow = false, collide = true })
+	-- the ground around the island (the sky castle floats over nothing, the lava land's sea is its landmark)
+	if def.id ~= "starcastle" and def.id ~= "magma" then
+		part(world, Vector3.new(1100, 4, 1100), CFrame.new(origin + Vector3.new(0, -16, 0)), shade(theme.grass2, -0.15), { material = theme.groundMaterial, shadow = false, collide = true })
+	end
+	local landmark = landmarks[def.id]
+	if landmark then
+		landmark(world, origin, rng)
+	end
 	local makeScenery = scenery[def.id]
 	for i = 1, 26 do
 		local a = i / 26 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
