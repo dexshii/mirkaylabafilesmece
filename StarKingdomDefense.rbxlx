@@ -214,7 +214,7 @@ local list: { EnemyDef } = {
 		name = "King Grumble",
 		kind = "ground",
 		boss = true,
-		hp = 2600,
+		hp = 1950,
 		speed = 3,
 		cash = 300,
 		leak = 999,
@@ -227,7 +227,7 @@ local list: { EnemyDef } = {
 		name = "Sandstorm Wyvern",
 		kind = "flying",
 		boss = true,
-		hp = 2300,
+		hp = 1700,
 		speed = 4.5,
 		cash = 320,
 		leak = 999,
@@ -240,7 +240,7 @@ local list: { EnemyDef } = {
 		name = "Frost Golem",
 		kind = "ground",
 		boss = true,
-		hp = 4200,
+		hp = 3150,
 		speed = 2.6,
 		cash = 360,
 		leak = 999,
@@ -254,7 +254,7 @@ local list: { EnemyDef } = {
 		name = "Magma Titan",
 		kind = "ground",
 		boss = true,
-		hp = 5800,
+		hp = 4350,
 		speed = 2.4,
 		cash = 400,
 		leak = 999,
@@ -267,7 +267,7 @@ local list: { EnemyDef } = {
 		name = "Shadow Monarch",
 		kind = "ground",
 		boss = true,
-		hp = 9500,
+		hp = 7100,
 		speed = 2.5,
 		cash = 600,
 		leak = 999,
@@ -437,6 +437,7 @@ Maps.Stages = 5
 Maps.FieldHalf = 120
 Maps.PathWidth = 9
 Maps.StartCash = 800
+Maps.StartCashPerMap = 250
 Maps.BaseHealth = 100
 
 export type Group = { enemy: string, count: number, interval: number, delay: number }
@@ -491,7 +492,7 @@ function Maps.buildWaves(def: MapDef, stage: number, modifiers: { [string]: any 
 		end
 		-- every stage starts near base health and ramps to the map's full multiplier by its last wave
 		local ramp = w / count
-		table.insert(waves, { groups = groups, hpMult = (1 + 0.12 * (w - 1)) * (1 + (base - 1) * ramp), bossMult = base })
+		table.insert(waves, { groups = groups, hpMult = (1 + 0.10 * (w - 1)) * (1 + (base - 1) * ramp), bossMult = base })
 	end
 	return waves
 end
@@ -1620,7 +1621,8 @@ function Battle.new(player: Player, opts: { [string]: any })
 	self.timer = PREP_SECONDS
 	self.time = 0
 	self.speed = 1
-	self.cash = math.floor(Maps.StartCash * (self.mods.startCash or 1))
+	-- later maps open harder, so they start with more cash
+	self.cash = math.floor((Maps.StartCash + Maps.StartCashPerMap * (Maps.Index[opts.mapId] - 1)) * (self.mods.startCash or 1))
 	self.baseHp = Maps.BaseHealth
 	self.enemies = {}
 	self.spawners = {}

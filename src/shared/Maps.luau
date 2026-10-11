@@ -142,6 +142,7 @@ Maps.Stages = 5
 Maps.FieldHalf = 120
 Maps.PathWidth = 9
 Maps.StartCash = 800
+Maps.StartCashPerMap = 250
 Maps.BaseHealth = 100
 
 export type Group = { enemy: string, count: number, interval: number, delay: number }
@@ -196,7 +197,7 @@ function Maps.buildWaves(def: MapDef, stage: number, modifiers: { [string]: any 
 		end
 		-- every stage starts near base health and ramps to the map's full multiplier by its last wave
 		local ramp = w / count
-		table.insert(waves, { groups = groups, hpMult = (1 + 0.12 * (w - 1)) * (1 + (base - 1) * ramp), bossMult = base })
+		table.insert(waves, { groups = groups, hpMult = (1 + 0.10 * (w - 1)) * (1 + (base - 1) * ramp), bossMult = base })
 	end
 	return waves
 end

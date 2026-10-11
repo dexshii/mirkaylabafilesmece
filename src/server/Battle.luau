@@ -70,7 +70,8 @@ function Battle.new(player: Player, opts: { [string]: any })
 	self.timer = PREP_SECONDS
 	self.time = 0
 	self.speed = 1
-	self.cash = math.floor(Maps.StartCash * (self.mods.startCash or 1))
+	-- later maps open harder, so they start with more cash
+	self.cash = math.floor((Maps.StartCash + Maps.StartCashPerMap * (Maps.Index[opts.mapId] - 1)) * (self.mods.startCash or 1))
 	self.baseHp = Maps.BaseHealth
 	self.enemies = {}
 	self.spawners = {}
