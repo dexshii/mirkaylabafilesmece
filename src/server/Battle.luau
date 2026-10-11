@@ -897,7 +897,7 @@ function Battle:snapshot()
 	local boss = nil
 	for _, e in self.enemies do
 		if e.alive and e.def.boss then
-			boss = { name = e.def.name, hp = math.max(0, math.floor(e.hp)), maxHp = math.floor(e.maxHp), immune = self.time < e.immuneUntil }
+			boss = { id = e.def.id, name = e.def.name, hp = math.max(0, math.floor(e.hp)), maxHp = math.floor(e.maxHp), immune = self.time < e.immuneUntil }
 			break
 		end
 	end

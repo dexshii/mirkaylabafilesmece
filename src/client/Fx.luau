@@ -95,7 +95,7 @@ local function floatingText(pos: Vector3, text: string, color: Color3)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.FredokaOne
+	label.Font = Enum.Font.LuckiestGuy
 	label.TextScaled = true
 	label.TextColor3 = color
 	label.TextStrokeTransparency = 0
@@ -104,6 +104,44 @@ local function floatingText(pos: Vector3, text: string, color: Color3)
 	TweenService:Create(anchor, TweenInfo.new(1.2), { CFrame = CFrame.new(pos + Vector3.new(0, 4, 0)) }):Play()
 	TweenService:Create(label, TweenInfo.new(1.2), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
 	Debris:AddItem(anchor, 1.3)
+end
+
+-- a quick damage number that hops up from the target
+local damageCount = 0
+local function damageNumber(pos: Vector3, amount: number, color: Color3)
+	if damageCount > 40 then
+		return -- plenty on screen already
+	end
+	damageCount += 1
+	local anchor = Instance.new("Part")
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.one * 0.2
+	local start = pos + Vector3.new(math.random() * 2 - 1, 1, math.random() * 2 - 1)
+	anchor.CFrame = CFrame.new(start)
+	anchor.Parent = folder
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromOffset(70, 26)
+	gui.AlwaysOnTop = true
+	gui.MaxDistance = 140
+	gui.Parent = anchor
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.LuckiestGuy
+	label.TextScaled = true
+	label.TextColor3 = color:Lerp(Color3.new(1, 1, 1), 0.5)
+	label.TextStrokeTransparency = 0
+	label.Text = amount >= 1000 and string.format("%.1fk", amount / 1000) or tostring(amount)
+	label.Parent = gui
+	TweenService:Create(anchor, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = CFrame.new(start + Vector3.new(0, 3, 0)) }):Play()
+	TweenService:Create(label, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	task.delay(0.75, function()
+		anchor:Destroy()
+		damageCount -= 1
+	end)
 end
 
 local handlers: { [string]: (any) -> () } = {
@@ -189,6 +227,9 @@ function Fx.start()
 			handler(p)
 		end
 		chainArcs(p)
+		if p.dmg and p.to then
+			damageNumber(p.to, p.dmg, p.color or Color3.new(1, 1, 1))
+		end
 	end)
 end
 

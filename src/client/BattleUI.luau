@@ -1,8 +1,9 @@
--- The battle HUD: wave/cash/castle health, the unit hotbar, placing units, the selected-unit panel and the
--- victory/defeat screen.
+-- The battle HUD: boss bar, wave counter and countdown ring, castle health, cash, the unit hotbar, placing units,
+-- the selected-unit panel (Upgrade T, Sell X, Target R) and the victory/defeat screen.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 
 local Shared = game.ReplicatedStorage.Shared
@@ -24,12 +25,18 @@ local player = Players.LocalPlayer
 local gui: ScreenGui
 
 local waveLabel: TextLabel
+local timerLabel: TextLabel
+local timerRing: Frame
 local statusLabel: TextLabel
 local cashLabel: TextLabel
 local hpFill: Frame
 local hpLabel: TextLabel
+local bossFrame: Frame
+local bossName: TextLabel
+local bossFill: Frame
+local bossHp: TextLabel
 local speedButton: TextButton
-local startButton: TextButton
+local skipButton: TextButton
 local hotbar: Frame
 local infoPanel: Frame
 local endPanel: Frame
@@ -41,6 +48,9 @@ local selectedTower: Model? = nil
 local selectedRange: Part? = nil
 local leaving = false
 local hotbarKey = ""
+local lastCash = 0
+
+local TARGET_MODES = { "First", "Last", "Strongest", "Closest" }
 
 local defaultLighting = {
 	ClockTime = Lighting.ClockTime,
@@ -82,7 +92,7 @@ local function rangeDisc(radius: number, color: Color3): Part
 end
 
 local function placeDisc(disc: Part, pos: Vector3)
-	disc.CFrame = CFrame.new(pos + Vector3.new(0, 0.3, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	disc.CFrame = CFrame.new(pos + Vector3.new(0, 0.4, 0)) * CFrame.Angles(0, 0, math.rad(90))
 end
 
 -- ============================================================ placement
@@ -108,6 +118,10 @@ local function deselect()
 	infoPanel.Visible = false
 end
 
+local function memberUnit(m): { [string]: any }
+	return { l = m.level, g = m.grades }
+end
+
 local function startPlacement(slot: number)
 	local member = Store.battle.team and Store.battle.team[slot]
 	if not member then
@@ -126,13 +140,13 @@ local function startPlacement(slot: number)
 			d.CanQuery = false
 			d.CanCollide = false
 			if d.Transparency < 1 then
-				d.Transparency = 0.4
+				d.Transparency = 0.35
 			end
 		end
 	end
 	model.Parent = workspace
 	ghost = model
-	local s = Stats.compute(member.unitId, 0, member.trait, nil)
+	local s = Stats.compute(member.unitId, 0, member.trait, nil, memberUnit(member))
 	ghostRange = rangeDisc(math.max(s.range, 2), C.green)
 end
 
@@ -177,7 +191,7 @@ local function updateGhost()
 		return
 	end
 	local pos = Vector3.new(hit.Position.X, Store.battle.origin.Y, hit.Position.Z)
-	ghost:PivotTo(CFrame.new(pos))
+	ghost:PivotTo(CFrame.new(pos) * CFrame.Angles(0, math.pi, 0))
 	placeDisc(ghostRange, pos)
 	ghostRange.Color = placementProblem(pos) and C.red or C.green
 end
@@ -196,8 +210,7 @@ local function tryPlace()
 		Ui.toast(problem, C.red)
 		return
 	end
-	local slot = placingSlot
-	local ok, err = Store.call("PlaceUnit", slot, pos)
+	local ok, err = Store.call("PlaceUnit", placingSlot, pos)
 	if not ok then
 		Ui.toast(err or "Can't place there", C.red)
 		return
@@ -210,7 +223,46 @@ end
 
 -- ============================================================ selected unit panel
 
-local function refreshInfo()
+local refreshInfo: () -> ()
+
+local function towerUnit(model: Model): { [string]: any }
+	local raw = model:GetAttribute("Grades")
+	local grades = string.split(type(raw) == "string" and raw or "A,A,A", ",")
+	return { l = model:GetAttribute("UnitLevel") or 1, g = { d = grades[1], s = grades[2], r = grades[3] } }
+end
+
+local function upgradeSelected()
+	if not selectedTower then
+		return
+	end
+	local ok, err = Store.call("UpgradeTower", selectedTower:GetAttribute("TowerId"))
+	if not ok then
+		Ui.toast(err or "Can't upgrade", C.red)
+	end
+	task.wait(0.1)
+	refreshInfo()
+end
+
+local function sellSelected()
+	if not selectedTower then
+		return
+	end
+	Store.call("SellTower", selectedTower:GetAttribute("TowerId"))
+	deselect()
+end
+
+local function cycleTarget()
+	if not selectedTower then
+		return
+	end
+	local current = selectedTower:GetAttribute("Targeting") or "First"
+	local nextMode = TARGET_MODES[(table.find(TARGET_MODES, current) or 0) % #TARGET_MODES + 1]
+	Store.call("SetTargeting", selectedTower:GetAttribute("TowerId"), nextMode)
+	task.wait(0.1)
+	refreshInfo()
+end
+
+function refreshInfo()
 	local model = selectedTower
 	if not model or not model.Parent then
 		deselect()
@@ -223,85 +275,85 @@ local function refreshInfo()
 	if traitId == "" then
 		traitId = nil
 	end
+	local unit = towerUnit(model)
 	local buffs = { damage = model:GetAttribute("DamageBuff") or 0, hitsAir = model:GetAttribute("AirBuff") == true }
-	local s = Stats.compute(unitId, level, traitId, buffs)
+	local s = Stats.compute(unitId, level, traitId, buffs, unit)
 	local spent = model:GetAttribute("Spent") or 0
 	local targeting = model:GetAttribute("Targeting") or "First"
+	infoPanel:SetAttribute("Level", level)
 
 	Ui.clear(infoPanel)
 	infoPanel.Visible = true
-	Ui.viewport(unitId, { Size = UDim2.fromOffset(90, 90), BackgroundColor3 = Rarities.Info[def.rarity].color:Lerp(Color3.new(0, 0, 0), 0.5), Parent = infoPanel })
-	Ui.text({ Text = def.name, Size = UDim2.new(1, -100, 0, 26), Position = UDim2.fromOffset(100, 0), MaxText = 22, Parent = infoPanel })
+	local color = Rarities.Info[def.rarity].color
+	-- header: portrait, name, rarity / trait chips
+	local portrait = Ui.new("Frame", {
+		Size = UDim2.fromOffset(96, 96),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		Parent = infoPanel,
+	}, { Ui.corner(12), Ui.stroke(C.ink, 3), Ui.gradient(Ui.RarityGradient[def.rarity][1], Ui.RarityGradient[def.rarity][2]) })
+	Ui.viewport(unitId, { Size = UDim2.fromScale(1, 1) }).Parent = portrait
+	Ui.text({ Text = "Lvl " .. unit.l, Size = UDim2.fromOffset(60, 18), Position = UDim2.fromOffset(4, 3), MaxText = 15, ZIndex = 3, Parent = portrait })
+	Ui.title({ Text = Ui.unitName(unitId), Size = UDim2.new(1, -106, 0, 30), Position = UDim2.fromOffset(106, 0), MaxText = 26, Parent = infoPanel })
+	Ui.chip(def.rarity, color, { Size = UDim2.fromOffset(100, 22), Position = UDim2.fromOffset(106, 34), Parent = infoPanel })
+	local trait = traitId and Traits.ById[traitId]
+	Ui.chip(trait and trait.name or "No trait", trait and Rarities.Info[trait.rarity].color or C.panel, { Size = UDim2.fromOffset(118, 22), Position = UDim2.fromOffset(212, 34), Parent = infoPanel })
 	Ui.text({
 		Text = string.rep("★", level) .. string.rep("☆", Units.MaxLevel - level),
-		Size = UDim2.new(1, -100, 0, 22),
-		Position = UDim2.fromOffset(100, 28),
+		Size = UDim2.new(1, -106, 0, 26),
+		Position = UDim2.fromOffset(106, 62),
 		TextColor3 = C.gold,
-		MaxText = 20,
+		MaxText = 24,
 		Parent = infoPanel,
 	})
-	local trait = traitId and Traits.ById[traitId]
-	Ui.text({
-		Text = trait and trait.name or "No trait",
-		Size = UDim2.new(1, -100, 0, 20),
-		Position = UDim2.fromOffset(100, 54),
-		TextColor3 = trait and Rarities.Info[trait.rarity].color or C.muted,
-		MaxText = 16,
-		Parent = infoPanel,
-	})
-	local lines
-	if def.attack.kind == "none" then
-		lines = string.format("Pays $%d per wave", s.farm)
-	else
-		lines = string.format("Damage %.0f  Range %.0f\nAttack every %.2fs\nHits %s", s.damage, s.range, s.cooldown, (s.hitsGround and "ground" or "") .. (s.hitsGround and s.hitsAir and " + " or "") .. (s.hitsAir and "air" or ""))
-		if s.farm > 0 then
-			lines ..= string.format("\nPays $%d per wave", s.farm)
-		end
+
+	-- stats
+	local rows = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 100), Position = UDim2.fromOffset(0, 104), BackgroundTransparency = 1, Parent = infoPanel }, { Ui.list(Enum.FillDirection.Vertical, 6) })
+	if def.attack.kind ~= "none" then
+		local top = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 46), BackgroundTransparency = 1, Parent = rows }, { Ui.list(Enum.FillDirection.Horizontal, 6) })
+		Ui.statChip("DMG", Ui.short(s.damage), unit.g.d, C.red, { Size = UDim2.fromOffset(106, 46), Parent = top })
+		Ui.statChip("SPA", string.format("%.2fs", s.cooldown), unit.g.s, C.blue, { Size = UDim2.fromOffset(106, 46), Parent = top })
+		Ui.statChip("RNG", string.format("%.1f", s.range), unit.g.r, C.gold, { Size = UDim2.fromOffset(106, 46), Parent = top })
+		local extra = {}
+		table.insert(extra, (s.hitsGround and "Ground" or "") .. (s.hitsGround and s.hitsAir and " + " or "") .. (s.hitsAir and "Air" or ""))
 		if buffs.damage > 0 then
-			lines ..= string.format("\nAura buff +%d%% damage", buffs.damage * 100)
+			table.insert(extra, string.format("+%d%% aura", buffs.damage * 100))
 		end
+		if s.farm > 0 then
+			table.insert(extra, string.format("$%d/wave", s.farm))
+		end
+		Ui.text({ Text = table.concat(extra, "  •  "), Size = UDim2.new(1, 0, 0, 20), TextColor3 = C.muted, MaxText = 15, Parent = rows })
+	else
+		Ui.statChip("FARM", "$" .. math.floor(s.farm) .. " per wave", nil, C.gold, { Size = UDim2.new(1, 0, 0, 46), Parent = rows })
 	end
-	Ui.text({
-		Text = lines,
-		Size = UDim2.new(1, 0, 0, 78),
-		Position = UDim2.fromOffset(0, 96),
-		TextYAlignment = Enum.TextYAlignment.Top,
-		TextWrapped = true,
-		MaxText = 16,
-		Parent = infoPanel,
-	})
-	local id = model:GetAttribute("TowerId")
+
+	-- actions
 	if level < Units.MaxLevel then
 		local cost = Stats.upgradeCost(unitId, level, traitId)
-		Ui.button("Upgrade $" .. Ui.formatNumber(cost), C.green, function()
-			local ok, err = Store.call("UpgradeTower", id)
-			if not ok then
-				Ui.toast(err or "Can't upgrade", C.red)
-			end
-			task.wait(0.1)
-			refreshInfo()
-		end, { Size = UDim2.new(1, 0, 0, 40), Position = UDim2.fromOffset(0, 178), Parent = infoPanel })
+		local up = Ui.button(string.format("[T] Upgrade %d/%d   $%s", level, Units.MaxLevel, Ui.formatNumber(cost)), Store.battle.cash >= cost and C.green or C.panel, upgradeSelected, {
+			Size = UDim2.new(1, 0, 0, 46),
+			Position = UDim2.fromOffset(0, 212),
+			MaxText = 20,
+			Parent = infoPanel,
+		})
+		up.Name = "Upgrade"
+		up:SetAttribute("Cost", cost)
 	else
-		Ui.button("MAX LEVEL", C.card, function() end, { Size = UDim2.new(1, 0, 0, 40), Position = UDim2.fromOffset(0, 178), Parent = infoPanel })
+		Ui.button("Upgrade MAXED", C.panel, function() end, { Size = UDim2.new(1, 0, 0, 46), Position = UDim2.fromOffset(0, 212), Parent = infoPanel })
 	end
 	if def.attack.kind ~= "none" then
-		Ui.button("Target: " .. targeting, C.blue, function()
-			local modes = { "First", "Last", "Strongest", "Closest" }
-			local nextMode = modes[(table.find(modes, targeting) or 0) % #modes + 1]
-			Store.call("SetTargeting", id, nextMode)
-			task.wait(0.1)
-			refreshInfo()
-		end, { Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 224), Parent = infoPanel })
+		Ui.button("[R] Target: " .. targeting, C.blue, cycleTarget, { Size = UDim2.new(0.5, -4, 0, 42), Position = UDim2.fromOffset(0, 264), MaxText = 18, Parent = infoPanel })
 	end
-	Ui.button("Sell +$" .. Ui.formatNumber(math.floor(spent * 0.6)), C.red, function()
-		Store.call("SellTower", id)
-		deselect()
-	end, { Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 266), Parent = infoPanel })
+	Ui.button("[X] Sell $" .. Ui.formatNumber(math.floor(spent * 0.6)), C.red, sellSelected, {
+		Size = UDim2.new(def.attack.kind ~= "none" and 0.5 or 1, def.attack.kind ~= "none" and -4 or 0, 0, 42),
+		Position = def.attack.kind ~= "none" and UDim2.new(0.5, 4, 0, 264) or UDim2.fromOffset(0, 264),
+		MaxText = 18,
+		Parent = infoPanel,
+	})
 
 	if selectedRange then
 		selectedRange:Destroy()
 	end
-	local disc = rangeDisc(math.max(s.range, 2), Rarities.Info[def.rarity].color)
+	local disc = rangeDisc(math.max(s.range, 2), color)
 	placeDisc(disc, model:GetPivot().Position)
 	selectedRange = disc
 end
@@ -330,7 +382,7 @@ end
 -- ============================================================ HUD
 
 local function refreshHotbar(state)
-	-- rebuild only when the team or what is allowed changes; costs and counts update in place
+	-- rebuild only when the team or what is allowed changes; prices and counts update in place
 	local key = ""
 	for i = 1, Units.TeamSize do
 		local m = state.team[i]
@@ -341,60 +393,94 @@ local function refreshHotbar(state)
 		Ui.clear(hotbar)
 		for i = 1, Units.TeamSize do
 			local m = state.team[i]
+			local holder = Ui.new("Frame", { Name = "Slot" .. i, Size = UDim2.fromOffset(98, 130), BackgroundTransparency = 1, LayoutOrder = i, Parent = hotbar })
 			if m then
-				local def = Units.ById[m.unitId]
-				local card = Ui.new("TextButton", {
-					Name = "Slot" .. i,
-					Text = "",
-					Size = UDim2.fromOffset(96, 112),
-					BackgroundColor3 = m.allowed and C.card or C.panelDark,
-					LayoutOrder = i,
-					Parent = hotbar,
-				}, { Ui.corner(10), Ui.stroke(Rarities.Info[def.rarity].color, 3) })
-				Ui.viewport(m.unitId, {
-					Size = UDim2.new(1, -8, 1, -40),
-					Position = UDim2.fromOffset(4, 4),
-					BackgroundColor3 = Rarities.Info[def.rarity].color:Lerp(Color3.new(0, 0, 0), 0.55),
-					Parent = card,
-				})
-				Ui.text({ Name = "Key", Text = tostring(i), Size = UDim2.fromOffset(18, 18), Position = UDim2.fromOffset(6, 4), ZIndex = 3, MaxText = 16, Parent = card })
-				Ui.text({ Name = "Cost", Text = "", Size = UDim2.new(1, -8, 0, 18), Position = UDim2.new(0, 4, 1, -36), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = C.gold, MaxText = 16, Parent = card })
-				Ui.text({ Name = "Count", Text = "", Size = UDim2.new(1, -8, 0, 16), Position = UDim2.new(0, 4, 1, -18), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = C.muted, MaxText = 13, Parent = card })
-				card.Activated:Connect(function()
+				local card = Ui.unitCard(holder, { unitId = m.unitId, level = m.level, trait = m.trait, price = m.cost, dim = not m.allowed }, UDim2.fromOffset(98, 112), function()
 					if placingSlot == i then
 						cancelPlacement()
 					else
 						startPlacement(i)
 					end
 				end)
+				card.Name = "Card"
+				Ui.chip(tostring(i), C.panel, { Size = UDim2.fromOffset(24, 22), Position = UDim2.new(1, -18, 1, -16), ZIndex = 8, Parent = card })
+				Ui.text({ Name = "Count", Text = "", Size = UDim2.new(1, 0, 0, 16), Position = UDim2.new(0, 0, 1, -16), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = C.muted, MaxText = 14, Parent = holder })
+			else
+				Ui.new("Frame", { Size = UDim2.fromOffset(98, 112), BackgroundColor3 = C.panelDark, BackgroundTransparency = 0.4, Parent = holder }, { Ui.corner(12), Ui.stroke(Color3.fromRGB(90, 76, 160), 2) })
 			end
 		end
 	end
 	for i = 1, Units.TeamSize do
 		local m = state.team[i]
-		local card = hotbar:FindFirstChild("Slot" .. i)
-		if m and card then
+		local holder = hotbar:FindFirstChild("Slot" .. i)
+		if m and holder and holder:FindFirstChild("Count") then
 			local def = Units.ById[m.unitId]
-			card.Cost.Text = "$" .. Ui.formatNumber(m.cost)
-			card.Cost.TextColor3 = state.cash >= m.cost and C.gold or C.red
-			card.Count.Text = m.allowed and (m.placed .. "/" .. def.limit) or "not allowed"
+			holder.Count.Text = m.allowed and (m.placed .. "/" .. def.limit .. (state.cash < m.cost and "  need $" .. Ui.formatNumber(m.cost - state.cash) or "")) or "not allowed"
+			holder.Count.TextColor3 = state.cash >= m.cost and C.muted or Color3.fromRGB(255, 120, 120)
+			local stroke = holder.Card:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Color = placingSlot == i and Color3.new(1, 1, 1) or C.ink
+				stroke.Thickness = placingSlot == i and 4 or 3
+			end
 		end
 	end
 end
 
 local function applyLighting(mapId: string?)
-	if mapId then
-		local theme = Maps.ById[mapId].theme
-		Lighting.ClockTime = theme.clock
-		Lighting.Ambient = theme.ambient
-		Lighting.OutdoorAmbient = theme.ambient
-		Lighting.FogColor = theme.fog
-		Lighting.FogEnd = 700
-	else
+	for _, name in { "SkMapAtmosphere", "SkMapColor", "SkMapBloom", "SkMapSunRays" } do
+		local old = Lighting:FindFirstChild(name)
+		if old then
+			old:Destroy()
+		end
+	end
+	if not mapId then
 		for k, v in defaultLighting do
 			(Lighting :: any)[k] = v
 		end
+		return
 	end
+	local theme = Maps.ById[mapId].theme
+	Lighting.ClockTime = theme.clock
+	Lighting.Ambient = theme.ambient
+	Lighting.OutdoorAmbient = theme.ambient
+	Lighting.FogColor = theme.fog
+	Lighting.FogEnd = 100000
+	local atmo = Instance.new("Atmosphere")
+	atmo.Name = "SkMapAtmosphere"
+	atmo.Density = theme.atmosphere.density
+	atmo.Color = theme.atmosphere.color
+	atmo.Decay = theme.atmosphere.decay
+	atmo.Haze = theme.atmosphere.haze
+	atmo.Glare = 0.2
+	atmo.Offset = 0.1
+	atmo.Parent = Lighting
+	local cc = Instance.new("ColorCorrectionEffect")
+	cc.Name = "SkMapColor"
+	cc.Saturation = theme.saturation
+	cc.Contrast = 0.08
+	cc.TintColor = theme.tint
+	cc.Parent = Lighting
+	local bloom = Instance.new("BloomEffect")
+	bloom.Name = "SkMapBloom"
+	bloom.Intensity = 0.6
+	bloom.Size = 28
+	bloom.Threshold = 1.6
+	bloom.Parent = Lighting
+	local rays = Instance.new("SunRaysEffect")
+	rays.Name = "SkMapSunRays"
+	rays.Intensity = 0.06
+	rays.Spread = 0.6
+	rays.Parent = Lighting
+end
+
+local function bumpCash(cash: number)
+	if cash > lastCash then
+		local box = cashLabel.Parent :: Instance
+		local s = box:FindFirstChild("Bump") or Ui.new("UIScale", { Name = "Bump", Parent = box })
+		s.Scale = 1.12
+		TweenService:Create(s, TweenInfo.new(0.2, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+	end
+	lastCash = cash
 end
 
 local wasActive = false
@@ -415,36 +501,52 @@ local function onState(state)
 		wasActive = true
 		leaving = false
 		endPanel.Visible = false
+		lastCash = state.cash
 		applyLighting(state.mapId)
 	end
 	gui.Enabled = true
-	waveLabel.Text = string.format("Wave %d / %d", state.wave, state.waves)
+	waveLabel.Text = string.format("WAVE %d/%d", state.wave, state.waves)
+	local showTimer = state.state == "prep" or (state.state == "wave" and not state.lastWave)
+	timerRing.Visible = showTimer
+	timerLabel.Text = tostring(state.timer) .. "s"
 	if state.state == "prep" then
-		statusLabel.Text = "Place your units! First wave in " .. state.timer .. "s"
-	elseif state.state == "break" then
-		statusLabel.Text = "Next wave in " .. state.timer .. "s"
+		statusLabel.Text = "Place your units!"
 	elseif state.state == "wave" then
-		statusLabel.Text = state.enemies .. " enemies"
+		statusLabel.Text = state.enemies .. " enemies" .. (state.lastWave and "  •  FINAL WAVE" or "")
 	elseif state.state == "won" then
 		statusLabel.Text = "Victory!"
 	else
 		statusLabel.Text = "Defeat"
 	end
 	if state.maxUnits then
-		statusLabel.Text ..= string.format("   |   units %d/%d", state.units, state.maxUnits)
+		statusLabel.Text ..= string.format("  •  units %d/%d", state.units, state.maxUnits)
 	end
 	cashLabel.Text = "$" .. Ui.formatNumber(state.cash)
-	hpFill.Size = UDim2.fromScale(math.clamp(state.baseHp / state.maxBaseHp, 0, 1), 1)
-	hpLabel.Text = "Castle " .. state.baseHp .. " / " .. state.maxBaseHp
-	speedButton.Text = state.speed .. "x speed"
-	startButton.Visible = state.state == "prep" or state.state == "break"
+	bumpCash(state.cash)
+	local hpFrac = math.clamp(state.baseHp / state.maxBaseHp, 0, 1)
+	hpFill.Size = UDim2.fromScale(hpFrac, 1)
+	hpLabel.Text = "🏰 " .. state.baseHp .. " / " .. state.maxBaseHp
+	speedButton.Text = "⏩ " .. state.speed .. "x"
+	skipButton.Visible = state.state == "prep" or state.canSkip
+	skipButton.Text = state.state == "prep" and "START" or "SKIP WAVE"
+
+	if state.boss then
+		bossFrame.Visible = true
+		bossName.Text = ModelFactory.displayName(state.boss.id, state.boss.name) .. (state.boss.immune and "  🛡" or "")
+		bossFill.Size = UDim2.fromScale(math.clamp(state.boss.hp / state.boss.maxHp, 0, 1), 1)
+		bossHp.Text = string.format("%s / %s (%d%%)", Ui.short(state.boss.hp), Ui.short(state.boss.maxHp), math.floor(state.boss.hp / state.boss.maxHp * 100 + 0.5))
+	else
+		bossFrame.Visible = false
+	end
+
 	refreshHotbar(state)
 	if selectedTower and infoPanel.Visible then
-		-- costs and stats may have changed (cash, auras)
 		local level = selectedTower:GetAttribute("Level")
+		local up = infoPanel:FindFirstChild("Upgrade")
 		if level ~= infoPanel:GetAttribute("Level") then
-			infoPanel:SetAttribute("Level", level)
 			refreshInfo()
+		elseif up then
+			Ui.setButtonColor(up, state.cash >= (up:GetAttribute("Cost") or 0) and C.green or C.panel)
 		end
 	end
 end
@@ -457,42 +559,71 @@ local function showEnd(result)
 	deselect()
 	Ui.clear(endPanel)
 	endPanel.Visible = true
-	Ui.text({
-		Text = result.won and "VICTORY!" or "DEFEAT",
-		Size = UDim2.new(1, 0, 0, 60),
+	Ui.pop(endPanel)
+	local won = result.won
+	local banner = Ui.title({
+		Text = won and "VICTORY!" or "DEFEAT",
+		Size = UDim2.new(1, 0, 0, 70),
+		Position = UDim2.fromOffset(0, -6),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		TextColor3 = result.won and C.gold or C.red,
-		TextStrokeTransparency = 0,
-		MaxText = 56,
+		TextColor3 = won and C.gold or C.red,
+		MaxText = 64,
+		Outline = 3,
 		Parent = endPanel,
 	})
-	local lines = { string.format("Waves cleared: %d / %d", result.won and result.waves or math.max(0, result.wave - 1), result.waves) }
-	if result.challenge then
-		table.insert(lines, "Challenge: " .. result.challenge)
+	if won then
+		Ui.new("UIGradient", {
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 250, 170)),
+				ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 190, 40)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 250, 170)),
+			}),
+			Rotation = 90,
+			Parent = banner,
+		})
 	end
-	table.insert(lines, "+" .. result.gems .. " gems")
+	Ui.text({
+		Text = string.format("Waves cleared: %d / %d%s", won and result.waves or math.max(0, result.wave - 1), result.waves, result.challenge and ("  •  " .. result.challenge) or ""),
+		Size = UDim2.new(1, 0, 0, 24),
+		Position = UDim2.fromOffset(0, 70),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextColor3 = C.muted,
+		MaxText = 20,
+		Parent = endPanel,
+	})
+	local rewards = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 40), Position = UDim2.fromOffset(0, 106), BackgroundTransparency = 1, Parent = endPanel }, { Ui.list(Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Center) })
+	Ui.chip("💎 +" .. result.gems, C.blue, { Size = UDim2.fromOffset(130, 36), Parent = rewards })
 	if result.crystals > 0 then
-		table.insert(lines, "+" .. result.crystals .. " Trait Crystal" .. (result.crystals == 1 and "" or "s"))
+		Ui.chip("🔮 +" .. result.crystals, C.crystal, { Size = UDim2.fromOffset(120, 36), Parent = rewards })
 	end
+	if (result.xp or 0) > 0 then
+		Ui.chip("⭐ +" .. result.xp .. " XP", C.gold, { Size = UDim2.fromOffset(140, 36), Parent = rewards })
+	end
+	local lines = {}
 	if result.firstClear then
 		table.insert(lines, "First clear bonus!")
 	end
 	if result.unlocked then
 		table.insert(lines, "New map unlocked: " .. result.unlocked)
 	end
+	for _, lu in result.levelUps or {} do
+		table.insert(lines, Ui.unitName(lu.unitId) .. " reached Lvl " .. lu.level .. "!")
+	end
 	Ui.text({
 		Text = table.concat(lines, "\n"),
-		Size = UDim2.new(1, 0, 0, 150),
-		Position = UDim2.fromOffset(0, 70),
+		Size = UDim2.new(1, -20, 0, 100),
+		Position = UDim2.fromOffset(10, 156),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Top,
-		MaxText = 22,
+		TextColor3 = C.gold,
+		MaxText = 20,
 		Parent = endPanel,
 	})
-	Ui.button("Back to Lobby", C.green, function()
+	local back = Ui.button("BACK TO LOBBY", C.green, function()
 		leaving = true
 		Store.call("LeaveBattle")
-	end, { Size = UDim2.fromOffset(220, 56), Position = UDim2.new(0.5, 0, 1, -66), AnchorPoint = Vector2.new(0.5, 0), MaxText = 24, Parent = endPanel })
+	end, { Size = UDim2.fromOffset(260, 60), Position = UDim2.new(0.5, 0, 1, -68), AnchorPoint = Vector2.new(0.5, 0), MaxText = 28, Parent = endPanel })
+	back.Font = Ui.TitleFont
 end
 
 local function buildHud()
@@ -506,54 +637,60 @@ local function buildHud()
 	})
 	Ui.new("UIScale", { Name = "Scale", Parent = gui })
 
-	local top = Ui.new("Frame", {
-		Size = UDim2.fromOffset(460, 104),
-		Position = UDim2.new(0.5, 0, 0, 8),
-		AnchorPoint = Vector2.new(0.5, 0),
-		BackgroundColor3 = C.panelDark,
-		BackgroundTransparency = 0.1,
-		Parent = gui,
-	}, { Ui.corner(12), Ui.stroke(nil, 2) })
-	waveLabel = Ui.text({ Text = "", Size = UDim2.new(0.5, -10, 0, 30), Position = UDim2.fromOffset(12, 6), MaxText = 26, Parent = top })
-	cashLabel = Ui.text({
-		Text = "",
-		Size = UDim2.new(0.5, -12, 0, 30),
-		Position = UDim2.new(0.5, 0, 0, 6),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextColor3 = C.gold,
-		MaxText = 28,
-		Parent = top,
-	})
-	statusLabel = Ui.text({ Text = "", Size = UDim2.new(1, -24, 0, 22), Position = UDim2.fromOffset(12, 40), TextColor3 = C.muted, MaxText = 18, Parent = top })
-	local hpBack = Ui.new("Frame", {
-		Size = UDim2.new(1, -24, 0, 24),
-		Position = UDim2.fromOffset(12, 70),
-		BackgroundColor3 = Color3.fromRGB(60, 20, 30),
-		Parent = top,
-	}, { Ui.corner(8) })
-	hpFill = Ui.new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = C.green, Parent = hpBack }, { Ui.corner(8) })
-	hpLabel = Ui.text({ Text = "", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 2, MaxText = 16, Parent = hpBack })
+	-- top centre: boss bar (only while a boss is alive) above the wave bar
+	local top = Ui.new("Frame", { Size = UDim2.fromOffset(720, 150), Position = UDim2.new(0.5, 0, 0, 10), AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1, Parent = gui })
+	bossFrame = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 52), BackgroundTransparency = 1, Visible = false, Parent = top })
+	local skull = Ui.new("Frame", { Size = UDim2.fromOffset(52, 52), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3, Parent = bossFrame }, { Ui.round(), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(255, 90, 90), Color3.fromRGB(140, 10, 30)) })
+	Ui.text({ Text = "👑", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 30, Outline = 0, ZIndex = 4, Parent = skull })
+	bossName = Ui.title({ Text = "", Size = UDim2.new(0.5, 0, 0, 24), Position = UDim2.fromOffset(60, 0), MaxText = 22, Parent = bossFrame })
+	bossHp = Ui.text({ Text = "", Size = UDim2.new(0.5, -60, 0, 22), Position = UDim2.new(0.5, 0, 0, 1), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = Color3.fromRGB(255, 210, 120), MaxText = 18, Parent = bossFrame })
+	local _, fill = Ui.bar(bossFrame, { Size = UDim2.new(1, -60, 0, 20), Position = UDim2.fromOffset(56, 28) }, Color3.fromRGB(255, 140, 30), 1)
+	bossFill = fill
 
+	local waveBar = Ui.new("Frame", {
+		Size = UDim2.fromOffset(520, 76),
+		Position = UDim2.new(0.5, 0, 0, 62),
+		AnchorPoint = Vector2.new(0.5, 0),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		Parent = top,
+	}, { Ui.corner(16), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(60, 48, 112), Color3.fromRGB(26, 20, 52)) })
+	waveLabel = Ui.title({ Text = "", Size = UDim2.fromOffset(200, 34), Position = UDim2.fromOffset(14, 6), MaxText = 30, Parent = waveBar })
+	statusLabel = Ui.text({ Text = "", Size = UDim2.new(1, -110, 0, 20), Position = UDim2.fromOffset(16, 42), TextColor3 = C.muted, MaxText = 16, Parent = waveBar })
+	local hpBack = Ui.new("Frame", { Size = UDim2.fromOffset(200, 26), Position = UDim2.fromOffset(222, 10), BackgroundColor3 = Color3.fromRGB(60, 20, 30), Parent = waveBar }, { Ui.round(), Ui.stroke(C.ink, 2) })
+	hpFill = Ui.new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), Parent = hpBack }, { Ui.round(), Ui.gradient(Color3.fromRGB(120, 240, 120), Color3.fromRGB(30, 160, 60)) })
+	hpLabel = Ui.text({ Text = "", Size = UDim2.new(1, 0, 1, -4), Position = UDim2.fromOffset(0, 2), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 16, ZIndex = 2, Parent = hpBack })
+	-- the countdown ring to the next wave
+	timerRing = Ui.new("Frame", {
+		Size = UDim2.fromOffset(64, 64),
+		Position = UDim2.new(1, -72, 0, 6),
+		BackgroundColor3 = Color3.fromRGB(30, 24, 60),
+		Parent = waveBar,
+	}, { Ui.round() })
+	local ringStroke = Ui.new("UIStroke", { Thickness = 5, Color = Color3.new(1, 1, 1), Parent = timerRing })
+	Ui.new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(120, 230, 255), Color3.fromRGB(40, 120, 255)), Parent = ringStroke })
+	timerLabel = Ui.title({ Text = "", Size = UDim2.new(1, -10, 1, -16), Position = UDim2.fromOffset(5, 8), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 26, Parent = timerRing })
+
+	-- right: skip / speed / leave
 	local controls = Ui.new("Frame", {
-		Size = UDim2.fromOffset(160, 150),
-		Position = UDim2.new(1, -12, 0, 12),
+		Size = UDim2.fromOffset(170, 170),
+		Position = UDim2.new(1, -14, 0, 14),
 		AnchorPoint = Vector2.new(1, 0),
 		BackgroundTransparency = 1,
 		Parent = gui,
-	}, { Ui.list(Enum.FillDirection.Vertical, 8) })
-	startButton = Ui.button("Start wave", C.green, function()
+	}, { Ui.list(Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Right) })
+	skipButton = Ui.button("SKIP WAVE", C.green, function()
 		Store.call("StartWave")
-	end, { Size = UDim2.fromOffset(160, 42), LayoutOrder = 1, Parent = controls })
-	speedButton = Ui.button("1x speed", C.blue, function()
-		local nextSpeed = (Store.battle.speed % 3) + 1
-		Store.call("SetSpeed", nextSpeed)
-	end, { Size = UDim2.fromOffset(160, 42), LayoutOrder = 2, Parent = controls })
+	end, { Size = UDim2.fromOffset(170, 48), LayoutOrder = 1, MaxText = 22, Parent = controls })
+	skipButton.Font = Ui.TitleFont
+	speedButton = Ui.button("⏩ 1x", C.blue, function()
+		Store.call("SetSpeed", (Store.battle.speed % 3) + 1)
+	end, { Size = UDim2.fromOffset(170, 44), LayoutOrder = 2, Parent = controls })
 	local leaveConfirm = false
 	local leaveButton
 	leaveButton = Ui.button("Leave", C.red, function()
 		if Store.battle.state ~= "won" and Store.battle.state ~= "lost" and not leaveConfirm then
 			leaveConfirm = true
-			leaveButton.Text = "Leave? (counts as loss)"
+			leaveButton.Text = "Leave? (= loss)"
 			task.delay(3, function()
 				leaveConfirm = false
 				leaveButton.Text = "Leave"
@@ -562,45 +699,51 @@ local function buildHud()
 		end
 		leaving = true
 		Store.call("LeaveBattle")
-	end, { Size = UDim2.fromOffset(160, 42), LayoutOrder = 3, Parent = controls })
+	end, { Size = UDim2.fromOffset(170, 40), LayoutOrder = 3, Parent = controls })
+
+	-- bottom: cash above the hotbar
+	local cashBox = Ui.new("Frame", { Size = UDim2.fromOffset(300, 54), Position = UDim2.new(0.5, 0, 1, -158), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1, Parent = gui })
+	local coin = Ui.new("Frame", { Size = UDim2.fromOffset(44, 44), Position = UDim2.fromOffset(28, 5), BackgroundColor3 = Color3.new(1, 1, 1), Parent = cashBox }, { Ui.round(), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(255, 240, 120), Color3.fromRGB(230, 150, 20)) })
+	Ui.title({ Text = "$", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 30, Parent = coin })
+	cashLabel = Ui.title({ Text = "", Size = UDim2.fromOffset(220, 50), Position = UDim2.fromOffset(80, 2), TextColor3 = Color3.fromRGB(255, 225, 90), MaxText = 44, Outline = 3, Parent = cashBox })
 
 	hotbar = Ui.new("Frame", {
-		Size = UDim2.fromOffset(6 * 102, 112),
-		Position = UDim2.new(0.5, 0, 1, -12),
+		Size = UDim2.fromOffset(6 * 104, 130),
+		Position = UDim2.new(0.5, 0, 1, -8),
 		AnchorPoint = Vector2.new(0.5, 1),
 		BackgroundTransparency = 1,
 		Parent = gui,
-	}, { Ui.list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Center) })
+	}, { Ui.list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Bottom) })
 	Ui.text({
-		Text = "Click a unit (or press 1-6), then click the ground. Shift keeps placing. Q / right-click cancels. Click a placed unit to upgrade it.",
-		Size = UDim2.fromOffset(700, 18),
-		Position = UDim2.new(0.5, 0, 1, -130),
+		Text = "Click a unit or press 1-6, then click the ground  •  Shift keeps placing  •  Q cancels  •  click a placed unit to upgrade",
+		Size = UDim2.fromOffset(820, 18),
+		Position = UDim2.new(0.5, 0, 1, -210),
 		AnchorPoint = Vector2.new(0.5, 1),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		TextColor3 = Color3.new(1, 1, 1),
-		TextStrokeTransparency = 0.4,
 		MaxText = 14,
 		Parent = gui,
 	})
 
 	infoPanel = Ui.new("Frame", {
-		Size = UDim2.fromOffset(250, 320),
-		Position = UDim2.new(1, -12, 0.5, 30),
-		AnchorPoint = Vector2.new(1, 0.5),
-		BackgroundColor3 = C.panel,
+		Size = UDim2.fromOffset(356, 320),
+		Position = UDim2.new(0, 14, 0.5, 10),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BackgroundColor3 = Color3.new(1, 1, 1),
 		Visible = false,
 		Parent = gui,
-	}, { Ui.corner(12), Ui.stroke(nil, 2), Ui.padding(10) })
+	}, { Ui.corner(16), Ui.stroke(C.ink, 3), Ui.padding(12), Ui.gradient(C.bgTop, C.bgBottom) })
 
 	endPanel = Ui.new("Frame", {
-		Size = UDim2.fromOffset(420, 320),
-		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(520, 360),
+		Position = UDim2.fromScale(0.5, 0.48),
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundColor3 = C.panel,
+		BackgroundColor3 = Color3.new(1, 1, 1),
 		Visible = false,
 		ZIndex = 5,
 		Parent = gui,
-	}, { Ui.corner(16), Ui.stroke(nil, 3), Ui.padding(14) })
+	}, { Ui.corner(20), Ui.padding(16), Ui.gradient(C.bgTop, C.bgBottom) })
+	local border = Ui.new("UIStroke", { Thickness = 5, Color = Color3.new(1, 1, 1), Parent = endPanel })
+	Ui.new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(255, 230, 110), Color3.fromRGB(240, 150, 30)), Rotation = 45, Parent = border })
 end
 
 function BattleUI.start()
@@ -618,6 +761,18 @@ function BattleUI.start()
 		end
 		if processed then
 			return
+		end
+		if selectedTower and infoPanel.Visible then
+			if input.KeyCode == Enum.KeyCode.T then
+				task.spawn(upgradeSelected)
+				return
+			elseif input.KeyCode == Enum.KeyCode.X then
+				task.spawn(sellSelected)
+				return
+			elseif input.KeyCode == Enum.KeyCode.R then
+				task.spawn(cycleTarget)
+				return
+			end
 		end
 		local keys = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five, Enum.KeyCode.Six }
 		local slot = table.find(keys, input.KeyCode)
