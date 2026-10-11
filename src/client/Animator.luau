@@ -22,15 +22,15 @@ local function track(model: Model)
 	if tracked[model] then
 		return
 	end
-	local part = model:FindFirstChild("SM64")
-	local weld = part and part:FindFirstChild("SkinWeld")
+	local skin = model:FindFirstChild("SM64")
+	local weld = skin and skin:FindFirstChild("SkinWeld", true)
 	if not weld or not weld:IsA("Weld") then
 		return
 	end
 	tracked[model] = {
 		weld = weld,
 		base = weld.C0,
-		height = (part :: BasePart).Size.Y,
+		height = weld.C0.Y * 2,
 		phase = math.random() * 10,
 		kind = kindOf(model),
 		lunge = 0,

@@ -129,7 +129,7 @@ local function tile(parent: Instance, emoji: string, label: string, color: Color
 		Parent = parent,
 	}, { Ui.corner(14), Ui.stroke(C.ink, 3), Ui.gradient(Ui.lighten(color, 0.2), Ui.darken(color, 0.35)) })
 	Ui.new("Frame", { Size = UDim2.new(1, -8, 0.42, 0), Position = UDim2.fromOffset(4, 4), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.85, Parent = t }, { Ui.corner(10) })
-	Ui.text({ Text = emoji, Size = UDim2.new(1, 0, 0, 46), Position = UDim2.fromOffset(0, 6), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 40, Outline = 0, Parent = t })
+	Ui.icon(nil, emoji, { Size = UDim2.new(1, 0, 0, 58), Position = UDim2.fromOffset(0, 4), MaxText = 40, Parent = t })
 	Ui.title({ Text = label, Size = UDim2.new(1, -6, 0, 22), Position = UDim2.new(0, 3, 1, -26), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 19, Parent = t })
 	local badge = Ui.new("Frame", { Size = UDim2.fromOffset(24, 24), Position = UDim2.fromOffset(-6, -6), BackgroundColor3 = Color3.fromRGB(30, 24, 50), ZIndex = 3, Parent = t }, { Ui.corner(6), Ui.stroke(C.ink, 2) })
 	Ui.text({ Text = key, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 15, ZIndex = 4, Parent = badge })
@@ -182,7 +182,7 @@ local function pill(parent: Instance, emoji: string, color: Color3, width: numbe
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		Parent = p,
 	}, { Ui.round(), Ui.stroke(C.ink, 3), Ui.gradient(Ui.lighten(color, 0.3), Ui.darken(color, 0.25)) })
-	Ui.text({ Text = emoji, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 26, Outline = 0, Parent = icon })
+	Ui.icon(nil, emoji, { Size = UDim2.fromScale(0.82, 0.82), Position = UDim2.fromScale(0.09, 0.09), MaxText = 26, Parent = icon })
 	return Ui.title({ Text = "0", Size = UDim2.new(1, -60, 0, 30), Position = UDim2.fromOffset(52, 7), MaxText = 26, Parent = p })
 end
 
@@ -226,7 +226,7 @@ local function refreshTeamTray()
 			}, { Ui.corner(12), Ui.stroke(Color3.fromRGB(70, 60, 120), 2) })
 			Ui.text({ Text = tostring(i), Size = UDim2.fromOffset(20, 18), Position = UDim2.new(1, -24, 0, 4), MaxText = 16, Parent = slot })
 			if not unlocked then
-				Ui.text({ Text = "🔒", Size = UDim2.new(1, 0, 0, 34), Position = UDim2.fromOffset(0, 26), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 28, Outline = 0, Parent = slot })
+				Ui.icon("lock", "🔒", { Size = UDim2.new(1, 0, 0, 38), Position = UDim2.fromOffset(0, 24), MaxText = 28, Parent = slot })
 				Ui.text({ Text = "Level " .. Progression.SlotUnlock[i], Size = UDim2.new(1, 0, 0, 22), Position = UDim2.fromOffset(0, 66), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 18, Parent = slot })
 			end
 			slot.Activated:Connect(function()
@@ -307,7 +307,7 @@ local function buildPlay()
 			Ui.text({ Text = stars(cleared, Maps.Stages), Size = UDim2.new(1, -20, 0, 26), Position = UDim2.fromOffset(12, 42), TextColor3 = C.gold, MaxText = 24, Parent = t })
 			if not unlocked then
 				Ui.new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.4, ZIndex = 3, Parent = t }, { Ui.corner(14) })
-				Ui.text({ Text = "🔒", Size = UDim2.fromOffset(40, 40), Position = UDim2.new(1, -50, 0.5, -20), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 32, Outline = 0, ZIndex = 4, Parent = t })
+				Ui.icon("lock", "🔒", { Size = UDim2.fromOffset(40, 40), Position = UDim2.new(1, -50, 0.5, -20), MaxText = 32, ZIndex = 4, Parent = t })
 			end
 			t.Activated:Connect(function()
 				selectedMap = def.id

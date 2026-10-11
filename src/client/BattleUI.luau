@@ -536,7 +536,7 @@ local function onState(state)
 	bumpCash(state.cash)
 	local hpFrac = math.clamp(state.baseHp / state.maxBaseHp, 0, 1)
 	hpFill.Size = UDim2.fromScale(hpFrac, 1)
-	hpLabel.Text = "🏰 " .. state.baseHp .. " / " .. state.maxBaseHp
+	hpLabel.Text = state.baseHp .. " / " .. state.maxBaseHp
 	speedButton.Text = "⏩ " .. state.speed .. "x"
 	skipButton.Visible = state.state == "prep" or state.canSkip
 	skipButton.Text = state.state == "prep" and "START" or "SKIP WAVE"
@@ -669,6 +669,7 @@ local function buildHud()
 	statusLabel = Ui.text({ Text = "", Size = UDim2.new(1, -110, 0, 20), Position = UDim2.fromOffset(16, 42), TextColor3 = C.muted, MaxText = 16, Parent = waveBar })
 	local hpBack = Ui.new("Frame", { Size = UDim2.fromOffset(200, 26), Position = UDim2.fromOffset(222, 10), BackgroundColor3 = Color3.fromRGB(60, 20, 30), Parent = waveBar }, { Ui.round(), Ui.stroke(C.ink, 2) })
 	hpFill = Ui.new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), Parent = hpBack }, { Ui.round(), Ui.gradient(Color3.fromRGB(120, 240, 120), Color3.fromRGB(30, 160, 60)) })
+	Ui.icon("heart", "❤️", { Size = UDim2.fromOffset(32, 32), Position = UDim2.new(0, -14, 0.5, -16), MaxText = 20, ZIndex = 3, Parent = hpBack })
 	hpLabel = Ui.text({ Text = "", Size = UDim2.new(1, 0, 1, -4), Position = UDim2.fromOffset(0, 2), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 16, ZIndex = 2, Parent = hpBack })
 	-- the countdown ring to the next wave
 	timerRing = Ui.new("Frame", {
@@ -714,8 +715,7 @@ local function buildHud()
 
 	-- bottom: cash above the hotbar
 	local cashBox = Ui.new("Frame", { Size = UDim2.fromOffset(300, 54), Position = UDim2.new(0.5, 0, 1, -158), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1, Parent = gui })
-	local coin = Ui.new("Frame", { Size = UDim2.fromOffset(44, 44), Position = UDim2.fromOffset(28, 5), BackgroundColor3 = Color3.new(1, 1, 1), Parent = cashBox }, { Ui.round(), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(255, 240, 120), Color3.fromRGB(230, 150, 20)) })
-	Ui.title({ Text = "$", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 30, Parent = coin })
+	Ui.icon("coin", "🪙", { Size = UDim2.fromOffset(52, 52), Position = UDim2.fromOffset(24, 1), MaxText = 40, Parent = cashBox })
 	cashLabel = Ui.title({ Text = "", Size = UDim2.fromOffset(220, 50), Position = UDim2.fromOffset(80, 2), TextColor3 = Color3.fromRGB(255, 225, 90), MaxText = 44, Outline = 3, Parent = cashBox })
 
 	hotbar = Ui.new("Frame", {

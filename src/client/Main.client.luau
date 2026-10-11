@@ -9,6 +9,7 @@ local BattleUI = require(script.Parent.BattleUI)
 local Ui = require(script.Parent.Ui)
 local Skins = require(script.Parent.Skins)
 local Animator = require(script.Parent.Animator)
+local AdminPanel = require(script.Parent.AdminPanel)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
@@ -26,6 +27,7 @@ end
 
 local lobbyGui = LobbyUI.start()
 local battleGui = BattleUI.start()
+AdminPanel.start()
 
 Store.BattleChanged:Connect(function(state)
 	LobbyUI.setVisible(not state.active)

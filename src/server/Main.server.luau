@@ -451,7 +451,145 @@ handle("LeaveBattle", function(player)
 	return true
 end)
 
+-- ============================================================ admin panel
+
+-- user ids that may use the admin panel; the game's owner and anyone testing in Studio always may
+local ADMINS: { number } = {}
+
+local RunService = game:GetService("RunService")
+
+local function isAdmin(player: Player): boolean
+	return RunService:IsStudio() or player.UserId == game.CreatorId or table.find(ADMINS, player.UserId) ~= nil
+end
+
+local adminActions: { [string]: (Player, any, any) -> (boolean, string?) } = {
+	gems = function(player, n)
+		local data = DataService.get(player)
+		data.gems = math.max(0, data.gems + math.floor(tonumber(n) or 0))
+		return true, "Gems: " .. data.gems
+	end,
+	crystals = function(player, n)
+		local data = DataService.get(player)
+		data.crystals = math.max(0, data.crystals + math.floor(tonumber(n) or 0))
+		return true, "Crystals: " .. data.crystals
+	end,
+	level = function(player, n)
+		local data = DataService.get(player)
+		data.level = math.clamp(math.floor(tonumber(n) or 1), 1, 999)
+		data.xp = 0
+		return true, "Player level " .. data.level
+	end,
+	giveUnit = function(player, unitId, count)
+		local data = DataService.get(player)
+		if not Units.ById[unitId] then
+			return false, "Unknown unit"
+		end
+		for _ = 1, math.clamp(math.floor(tonumber(count) or 1), 1, 50) do
+			local uid = DataService.addUnit(data, unitId)
+			data.units[uid].g = Progression.rollGrades(rng)
+		end
+		return true, "Gave " .. Units.ById[unitId].name
+	end,
+	maxUnits = function(player)
+		local data = DataService.get(player)
+		for _, e in data.units do
+			e.l, e.x, e.g = Progression.MaxLevel, 0, { d = "SSS", s = "SSS", r = "SSS" }
+		end
+		return true, "Every unit is Lvl 50 with SSS grades"
+	end,
+	traitTeam = function(player, traitId)
+		local data = DataService.get(player)
+		if not Traits.ById[traitId] then
+			return false, "Unknown trait"
+		end
+		for _, uid in data.team do
+			if uid ~= "" and data.units[uid] then
+				data.units[uid].t = traitId
+			end
+		end
+		return true, "Team trait: " .. Traits.ById[traitId].name
+	end,
+	unlockMaps = function(player)
+		local data = DataService.get(player)
+		for _, m in Maps.List do
+			data.progress[m.id] = Maps.Stages
+		end
+		return true, "Every map and stage unlocked"
+	end,
+	resetChallenges = function(player)
+		local data = DataService.get(player) :: any
+		data.challenges = {}
+		return true, "Challenges can be cleared again today"
+	end,
+	cash = function(player, n)
+		local battle = battles[player]
+		if not battle then
+			return false, "Not in a battle"
+		end
+		battle.cash += math.floor(tonumber(n) or 0)
+		return true, "Cash: " .. battle.cash
+	end,
+	nextWave = function(player)
+		local battle = battles[player]
+		if not battle or battle.state ~= "wave" and battle.state ~= "prep" then
+			return false, "No wave to skip"
+		end
+		battle.timer = 0
+		if battle.state == "prep" then
+			battle:startNextWave()
+		end
+		return true, "Next wave"
+	end,
+	killAll = function(player)
+		local battle = battles[player]
+		if not battle then
+			return false, "Not in a battle"
+		end
+		for _, e in table.clone(battle.enemies) do
+			battle:kill(e, nil)
+		end
+		return true, "Cleared the field"
+	end,
+	heal = function(player)
+		local battle = battles[player]
+		if not battle then
+			return false, "Not in a battle"
+		end
+		battle.baseHp = Maps.BaseHealth
+		return true, "Castle healed"
+	end,
+	win = function(player)
+		local battle = battles[player]
+		if not battle then
+			return false, "Not in a battle"
+		end
+		battle:finish(true)
+		return true, "Victory"
+	end,
+}
+
+handle("Admin", function(player, action, a, b)
+	if not isAdmin(player) then
+		return false, "Not an admin"
+	end
+	local fn = type(action) == "string" and adminActions[action]
+	if not fn or not DataService.get(player) then
+		return false, "Unknown action"
+	end
+	local ok, msg = fn(player, a, b)
+	DataService.changed(player)
+	return ok, msg
+end)
+
 -- ============================================================ players
+
+local function onPlayer(player: Player)
+	player:SetAttribute("IsAdmin", isAdmin(player))
+end
+for _, p in Players:GetPlayers() do
+	onPlayer(p)
+end
+Players.PlayerAdded:Connect(onPlayer)
 
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterAdded:Connect(function()

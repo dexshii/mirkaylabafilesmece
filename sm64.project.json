@@ -40,7 +40,8 @@
     },
     "Workspace": {
       "$properties": {
-        "FilteringEnabled": true
+        "FilteringEnabled": true,
+        "StreamingEnabled": false
       },
       "Lobby": {
         "$className": "Model",

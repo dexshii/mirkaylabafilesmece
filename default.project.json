@@ -3,35 +3,64 @@
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
-      "Shared": { "$path": "src/shared" }
+      "Shared": {
+        "$path": "src/shared"
+      }
     },
     "ServerScriptService": {
-      "Server": { "$path": "src/server" }
+      "Server": {
+        "$path": "src/server"
+      }
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        "Client": { "$path": "src/client" }
+        "Client": {
+          "$path": "src/client"
+        }
       }
     },
     "Lighting": {
       "$properties": {
         "ClockTime": 14,
         "Brightness": 2,
-        "Ambient": [0.45, 0.45, 0.5],
-        "OutdoorAmbient": [0.55, 0.55, 0.6]
+        "Ambient": [
+          0.45,
+          0.45,
+          0.5
+        ],
+        "OutdoorAmbient": [
+          0.55,
+          0.55,
+          0.6
+        ]
       }
     },
     "Workspace": {
-      "$properties": { "FilteringEnabled": true },
+      "$properties": {
+        "FilteringEnabled": true,
+        "StreamingEnabled": false
+      },
       "Lobby": {
         "$className": "Model",
         "Floor": {
           "$className": "Part",
           "$properties": {
             "Anchored": true,
-            "Size": [220, 4, 220],
-            "Position": [0, -2, 0],
-            "Color": [0.38, 0.75, 0.32],
+            "Size": [
+              220,
+              4,
+              220
+            ],
+            "Position": [
+              0,
+              -2,
+              0
+            ],
+            "Color": [
+              0.38,
+              0.75,
+              0.32
+            ],
             "Material": "Grass",
             "TopSurface": "Smooth",
             "BottomSurface": "Smooth"
@@ -41,9 +70,21 @@
           "$className": "SpawnLocation",
           "$properties": {
             "Anchored": true,
-            "Size": [12, 1, 12],
-            "Position": [0, 0.5, 0],
-            "Color": [1, 0.85, 0.2],
+            "Size": [
+              12,
+              1,
+              12
+            ],
+            "Position": [
+              0,
+              0.5,
+              0
+            ],
+            "Color": [
+              1,
+              0.85,
+              0.2
+            ],
             "Material": "Neon",
             "Neutral": true,
             "Duration": 0

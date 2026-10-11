@@ -141,6 +141,65 @@ function Ui.text(props: { [string]: any }): TextLabel
 	return label
 end
 
+-- drawn icons (see IconData), made into EditableImages once; nil when images can't be created
+local iconImages: { [string]: any } = {}
+local function iconContent(name: string): Content?
+	local cached = iconImages[name]
+	if cached == nil then
+		cached = false
+		local data = require(script.Parent.IconData) :: any
+		if data[name] then
+			local ok, image = pcall(function()
+				local img = game:GetService("AssetService"):CreateEditableImage({ Size = Vector2.new(96, 96) })
+				img:WritePixelsBuffer(Vector2.zero, Vector2.new(96, 96), Skins.decode64(data[name]))
+				return img
+			end)
+			if ok and image then
+				cached = Content.fromObject(image)
+			end
+		end
+		iconImages[name] = cached
+	end
+	return cached or nil
+end
+
+-- which drawn icon stands in for an emoji
+Ui.IconFor = {
+	["⚔️"] = "play",
+	["⚔"] = "play",
+	["✨"] = "star",
+	["⭐"] = "star",
+	["🎒"] = "mushroom",
+	["🔮"] = "crystal",
+	["🏆"] = "trophy",
+	["💎"] = "gem",
+	["🔒"] = "lock",
+	["🛠"] = "wrench",
+	["🪙"] = "coin",
+	["❤️"] = "heart",
+	["🌸"] = "flower",
+	["🗺"] = "pipe",
+}
+
+-- an icon: the drawn image when possible, else the emoji. props are applied to whichever is made
+function Ui.icon(name: string?, emoji: string, props: { [string]: any }): GuiObject
+	local content = iconContent(name or Ui.IconFor[emoji] or "")
+	if content then
+		local p: { [string]: any } = { BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, ImageContent = content }
+		for k, v in props do
+			if k ~= "MaxText" and k ~= "Outline" and k ~= "Font" and string.sub(k, 1, 4) ~= "Text" then
+				p[k] = v
+			end
+		end
+		return Ui.new("ImageLabel", p)
+	end
+	local p: { [string]: any } = { Text = emoji, TextXAlignment = Enum.TextXAlignment.Center, Outline = 0 }
+	for k, v in props do
+		p[k] = v
+	end
+	return Ui.text(p)
+end
+
 function Ui.title(props: { [string]: any }): TextLabel
 	props.Font = Ui.TitleFont
 	props.Outline = props.Outline or 2.4
@@ -276,7 +335,7 @@ function Ui.window(parent: Instance, title: string, icon: string, size: UDim2, o
 		ZIndex = 5,
 		Parent = window,
 	}, { Ui.corner(14), Ui.stroke(C.ink, 3), Ui.gradient(Color3.fromRGB(255, 226, 96), Color3.fromRGB(236, 136, 22)) })
-	Ui.title({ Text = icon, Size = UDim2.fromOffset(48, 48), Position = UDim2.fromOffset(8, 5), TextXAlignment = Enum.TextXAlignment.Center, MaxText = 40, ZIndex = 6, Parent = banner })
+	Ui.icon(nil, icon, { Size = UDim2.fromOffset(52, 52), Position = UDim2.fromOffset(6, 3), MaxText = 40, ZIndex = 6, Parent = banner })
 	Ui.title({ Text = title, Size = UDim2.new(1, -70, 0, 44), Position = UDim2.fromOffset(62, 7), MaxText = 38, ZIndex = 6, Parent = banner })
 	local close = Ui.button("X", C.red, onClose, {
 		Size = UDim2.fromOffset(52, 52),
