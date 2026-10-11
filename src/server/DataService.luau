@@ -4,13 +4,15 @@ local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 
 local Units = require(game.ReplicatedStorage.Shared.Units)
+local Progression = require(game.ReplicatedStorage.Shared.Progression)
 
 local DataService = {}
 
 local STORE_NAME = "StarKingdomDefense_v1"
 local AUTOSAVE_SECONDS = 120
 
-export type UnitEntry = { u: string, t: string? }
+-- u: unit id, t: trait id, l: level, x: xp toward the next level, g: stat grades { d, s, r }
+export type UnitEntry = { u: string, t: string?, l: number?, x: number?, g: { [string]: string }? }
 export type Data = {
 	gems: number,
 	crystals: number,
@@ -37,7 +39,10 @@ local function defaultData(): Data
 	return {
 		gems = 500, -- enough for one 10x summon
 		crystals = 3,
-		units = { ["1"] = { u = "mushling" }, ["2"] = { u = "shellback" } },
+		units = {
+			["1"] = { u = "mushling", l = 1, x = 0, g = { d = "A", s = "A", r = "A" } },
+			["2"] = { u = "shellback", l = 1, x = 0, g = { d = "A", s = "A", r = "A" } },
+		},
 		nextUid = 3,
 		team = { "1", "2", "", "", "", "" },
 		progress = {},
@@ -61,6 +66,10 @@ local function reconcile(data: any): Data
 	for uid, entry in data.units do
 		if type(entry) ~= "table" or not Units.ById[entry.u] then
 			data.units[uid] = nil
+		else
+			entry.l = entry.l or 1
+			entry.x = entry.x or 0
+			entry.g = entry.g or table.clone(Progression.DefaultGrades)
 		end
 	end
 	for i = 1, Units.TeamSize do
@@ -134,7 +143,7 @@ end
 function DataService.addUnit(data: Data, unitId: string): string
 	local uid = tostring(data.nextUid)
 	data.nextUid += 1
-	data.units[uid] = { u = unitId }
+	data.units[uid] = { u = unitId, l = 1, x = 0, g = table.clone(Progression.DefaultGrades) }
 	return uid
 end
 

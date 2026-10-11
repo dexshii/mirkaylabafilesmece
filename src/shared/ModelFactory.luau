@@ -1,6 +1,10 @@
 -- Builds every unit and enemy model out of plain parts, so the game needs no uploaded meshes.
 -- Models face -Z (Roblox's forward). Each model's PrimaryPart "Root" is an invisible part at its feet; the other
 -- parts are welded to it, so moving Root moves the model.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Units = require(script.Parent.Units)
+
 local ModelFactory = {}
 
 local WHITE = Color3.fromRGB(250, 250, 250)
@@ -361,8 +365,89 @@ function ModelFactory.has(key: string): boolean
 	return designs[key] ~= nil
 end
 
+-- ============================================================ custom models
+-- A Model in ReplicatedStorage.CustomModels named after a unit or enemy id (e.g. "captaincomet", "grumble")
+-- replaces the built-in model: it is scaled to the unit's height, stood on its feet and welded to a Root. Models are
+-- expected to face -Z (Roblox's front). A "DisplayName" attribute on it renames the unit or enemy in the UI.
+
+local function customModel(key: string): Model?
+	local folder = ReplicatedStorage:FindFirstChild("CustomModels")
+	local m = folder and folder:FindFirstChild(key)
+	if m and m:IsA("Model") then
+		return m
+	end
+	return nil
+end
+
+-- the height a model is built at (scale 1)
+function ModelFactory.height(key: string): number
+	local unit = Units.ById[key]
+	if unit then
+		return unit.height
+	end
+	return 4.5
+end
+
+function ModelFactory.displayName(key: string, fallback: string): string
+	local m = customModel(key)
+	local name = m and m:GetAttribute("DisplayName")
+	return type(name) == "string" and name ~= "" and name or fallback
+end
+
+local function buildCustom(source: Model, key: string, scale: number, anchored: boolean?): Model
+	local model = source:Clone()
+	model.Name = key
+	for _, d in model:GetDescendants() do
+		if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Humanoid") or d:IsA("JointInstance") or d:IsA("WeldConstraint") then
+			d:Destroy()
+		end
+	end
+	local _, size = model:GetBoundingBox()
+	local target = ModelFactory.height(key) * scale
+	if size.Y > 0 then
+		model:ScaleTo(model:GetScale() * target / size.Y)
+	end
+	local cf, newSize = model:GetBoundingBox()
+	local root = Instance.new("Part")
+	root.Name = "Root"
+	root.Size = Vector3.new(1, 1, 1) * scale
+	root.Transparency = 1
+	root.Anchored = true
+	root.CanCollide = false
+	root.CanQuery = false
+	root.CanTouch = false
+	root.CFrame = CFrame.new(cf.Position.X, cf.Position.Y - newSize.Y / 2, cf.Position.Z)
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CanCollide = false
+			d.CanTouch = false
+			d.Massless = true
+			if anchored then
+				d.Anchored = true
+			else
+				d.Anchored = false
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = root
+				weld.Part1 = d
+				weld.Parent = d
+			end
+		end
+	end
+	root.Parent = model
+	model.PrimaryPart = root
+	-- the model's origin is its feet, at the world origin like the built-in models
+	model:PivotTo(CFrame.new())
+	return model
+end
+
+-- ============================================================ build
+
 -- anchored = true anchors every part (viewports, previews); otherwise only Root is anchored and the rest is welded.
 function ModelFactory.build(key: string, scale: number?, anchored: boolean?): Model
+	local custom = customModel(key)
+	if custom then
+		return buildCustom(custom, key, scale or 1, anchored)
+	end
 	local design = designs[key] or designs.grumble
 	local s = scale or 1
 	local model = Instance.new("Model")
@@ -388,7 +473,10 @@ function ModelFactory.build(key: string, scale: number?, anchored: boolean?): Mo
 		else
 			local p = Instance.new("Part")
 			if shape == "Ball" then
-				p.Shape = Enum.PartType.Ball
+				-- Ball parts are always perfect spheres; a sphere mesh stretches to the part's size (ellipsoids)
+				local mesh = Instance.new("SpecialMesh")
+				mesh.MeshType = Enum.MeshType.Sphere
+				mesh.Parent = p
 			elseif shape == "Cylinder" then
 				p.Shape = Enum.PartType.Cylinder
 			end

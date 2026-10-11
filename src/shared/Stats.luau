@@ -1,6 +1,7 @@
 -- A placed unit's effective stats: its definition, upgrade level, trait and the auras around it.
 local Units = require(script.Parent.Units)
 local Traits = require(script.Parent.Traits)
+local Progression = require(script.Parent.Progression)
 
 local Stats = {}
 
@@ -21,16 +22,21 @@ export type Computed = {
 	chain: number,
 }
 
+-- level: the in-battle upgrade level (0-4)
 -- buffs: { damage = fraction from auras, hitsAir = true when an aura grants it }
-function Stats.compute(unitId: string, level: number, traitId: string?, buffs: { [string]: any }?): Computed
+-- unit: the owned unit's progression { l = unit level, g = { d, s, r } stat grades }
+function Stats.compute(unitId: string, level: number, traitId: string?, buffs: { [string]: any }?, unit: { [string]: any }?): Computed
 	local def = Units.ById[unitId]
 	local trait = traitId and Traits.ById[traitId]
 	local t = trait and trait.fx or {}
 	local b = buffs or {}
+	local u = unit or {}
+	local g = u.g or Progression.DefaultGrades
+	local gm = Progression.GradeMult
 
-	local damage = def.damage * (1 + 0.30 * level) * (1 + (t.damage or 0) + (b.damage or 0))
-	local range = def.range * (1 + 0.06 * level) * (1 + (t.range or 0))
-	local cooldown = def.cooldown * (1 - 0.05 * level) / (1 + (t.speed or 0))
+	local damage = def.damage * (1 + 0.30 * level) * (1 + (t.damage or 0) + (b.damage or 0)) * Progression.levelDamage(u.l) * (gm[g.d] or 1)
+	local range = def.range * (1 + 0.06 * level) * (1 + (t.range or 0)) * (gm[g.r] or 1)
+	local cooldown = def.cooldown * (1 - 0.05 * level) / (1 + (t.speed or 0)) / (gm[g.s] or 1)
 
 	local slow = def.attack.slow
 	if t.slow and (not slow or t.slow.pct > slow.pct) then

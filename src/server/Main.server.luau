@@ -8,6 +8,7 @@ local Traits = require(Shared.Traits)
 local Rarities = require(Shared.Rarities)
 local Maps = require(Shared.Maps)
 local Challenges = require(Shared.Challenges)
+local Progression = require(Shared.Progression)
 
 local DataService = require(script.Parent.DataService)
 local Battle = require(script.Parent.Battle)
@@ -100,6 +101,7 @@ handle("Summon", function(player, count)
 		local pool = Units.ByRarity[rarity]
 		local def = pool[rng:NextInteger(1, #pool)]
 		local uid = DataService.addUnit(data, def.id)
+		data.units[uid].g = Progression.rollGrades(rng)
 		-- fill an empty team slot with new units so a new player can play right away
 		local empty = table.find(data.team, "")
 		local alreadyOnTeam = false
@@ -111,7 +113,7 @@ handle("Summon", function(player, count)
 		if empty and not alreadyOnTeam then
 			data.team[empty] = uid
 		end
-		table.insert(results, { uid = uid, unitId = def.id, rarity = rarity })
+		table.insert(results, { uid = uid, unitId = def.id, rarity = rarity, grades = data.units[uid].g })
 	end
 	data.stats.summons = (data.stats.summons or 0) + count
 	DataService.changed(player)
@@ -226,6 +228,20 @@ local function rewardsFor(data, battle, won: boolean)
 	end
 	data.gems += result.gems
 	data.crystals += result.crystals
+
+	-- every unit that went into battle earns XP: per wave survived, doubled on a win
+	local xp = math.max(0, battle.waveIndex - (won and 0 or 1)) * 12 * (won and 2 or 1)
+	result.xp = xp
+	result.levelUps = {}
+	for _, member in battle.team do
+		local entry = data.units[member.uid]
+		if entry and xp > 0 then
+			local gained = Progression.addXp(entry, xp)
+			if gained > 0 then
+				table.insert(result.levelUps, { unitId = entry.u, level = entry.l })
+			end
+		end
+	end
 	return result
 end
 
@@ -278,7 +294,7 @@ handle("StartBattle", function(player, kind, id, stage)
 		local uid = data.team[i]
 		local entry = uid ~= "" and data.units[uid]
 		if entry then
-			team[i] = { uid = uid, unitId = entry.u, trait = entry.t }
+			team[i] = { uid = uid, unitId = entry.u, trait = entry.t, level = entry.l or 1, grades = entry.g or Progression.DefaultGrades }
 			any = true
 		end
 	end

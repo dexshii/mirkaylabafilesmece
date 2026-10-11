@@ -16,8 +16,12 @@ local MapBuilder = require(script.Parent.MapBuilder)
 local Battle = {}
 Battle.__index = Battle
 
-local PREP_SECONDS = 25
-local BREAK_SECONDS = 6
+local PREP_SECONDS = 20
+-- the next wave arrives after this many seconds even if enemies are still alive (plus the wave's spawn time)
+local WAVE_SECONDS = 22
+local BOSS_EXTRA_SECONDS = 25
+-- once the field is clear the next wave comes after at most this long
+local CLEAR_SECONDS = 3
 local STATE_INTERVAL = 0.2
 local CHAIN_JUMP = 14
 local TARGETING = { "First", "Last", "Strongest", "Closest" }
@@ -46,7 +50,8 @@ function Battle.new(player: Player, opts: { [string]: any })
 	self.team = opts.team
 	self.onEnd = opts.onEnd
 	self.slot = opts.slot
-	self.origin = Vector3.new(400 * opts.slot, 0, 800)
+	-- arenas are far apart: each map has scenery reaching 550 studs out
+	self.origin = Vector3.new(1200 * opts.slot, 0, 1200)
 
 	self.arena, self.points = MapBuilder.build(self.mapDef, self.origin, opts.slot * 7919 + Maps.Index[opts.mapId])
 	self.segLen = {}
@@ -212,12 +217,12 @@ function Battle:kill(enemy, tower)
 	self:removeEnemy(enemy)
 end
 
-function Battle:damage(enemy, amount: number, tower, applyEffects: boolean)
+function Battle:damage(enemy, amount: number, tower, applyEffects: boolean): number
 	if not enemy.alive then
-		return
+		return 0
 	end
 	if self.time < enemy.immuneUntil then
-		return
+		return 0
 	end
 	local s = tower and tower.stats
 	local d = amount
@@ -231,6 +236,7 @@ function Battle:damage(enemy, amount: number, tower, applyEffects: boolean)
 	end
 	d *= 1 - (enemy.def.armor or 0)
 	enemy.hp -= d
+	enemy.lastHitBy = tower
 
 	if applyEffects and s then
 		if s.slow then
@@ -253,6 +259,7 @@ function Battle:damage(enemy, amount: number, tower, applyEffects: boolean)
 	if enemy.hp <= 0 then
 		self:kill(enemy, tower)
 	end
+	return d
 end
 
 function Battle:useAbility(enemy)
@@ -431,16 +438,20 @@ function Battle:attack(tower, target)
 	-- turn to face the target
 	tower.model:PivotTo(CFrame.lookAt(tower.pos, Vector3.new(target.pos.X, tower.pos.Y, target.pos.Z)))
 
+	local dealt = 0
 	if kind == "single" then
 		hit[target] = true
-		self:damage(target, s.damage, tower, true)
+		dealt = self:damage(target, s.damage, tower, true)
 	elseif kind == "splash" then
 		radius = def.attack.radius
 		local center = target.pos
 		for _, e in self.enemies do
 			if e.alive and self:canHit(tower, e) and flatDist(e.pos, center) <= radius then
 				hit[e] = true
-				self:damage(e, s.damage, tower, true)
+				local d = self:damage(e, s.damage, tower, true)
+				if e == target then
+					dealt = d
+				end
 			end
 		end
 	elseif kind == "slam" then
@@ -448,7 +459,10 @@ function Battle:attack(tower, target)
 		for _, e in self.enemies do
 			if e.alive and self:canHit(tower, e) and flatDist(e.pos, tower.pos) <= s.range then
 				hit[e] = true
-				self:damage(e, s.damage, tower, true)
+				local d = self:damage(e, s.damage, tower, true)
+				if e == target then
+					dealt = d
+				end
 			end
 		end
 	elseif kind == "cone" then
@@ -461,13 +475,16 @@ function Battle:attack(tower, target)
 				local d = off.Magnitude
 				if d <= s.range and (d < 1 or off.Unit:Dot(aim) >= cosLimit) then
 					hit[e] = true
-					self:damage(e, s.damage, tower, true)
+					local dd = self:damage(e, s.damage, tower, true)
+					if e == target then
+						dealt = dd
+					end
 				end
 			end
 		end
 	elseif kind == "chain" then
 		hit[target] = true
-		self:damage(target, s.damage, tower, true)
+		dealt = self:damage(target, s.damage, tower, true)
 		self:chainFrom(tower, target, s.chain, s.damage, def.attack.falloff or 0.75, hit, chainPoints)
 	end
 
@@ -485,6 +502,7 @@ function Battle:attack(tower, target)
 		ground = tower.pos,
 		chain = #chainPoints > 1 and chainPoints or nil,
 		tower = tower.id,
+		dmg = dealt > 0 and math.floor(dealt + 0.5) or nil,
 	})
 end
 
@@ -525,7 +543,7 @@ function Battle:recalcTowers()
 				end
 			end
 		end
-		tower.stats = Stats.compute(tower.unitId, tower.level, tower.trait, buffs)
+		tower.stats = Stats.compute(tower.unitId, tower.level, tower.trait, buffs, tower.unit)
 		tower.model:SetAttribute("Level", tower.level)
 		tower.model:SetAttribute("Targeting", tower.targeting)
 		tower.model:SetAttribute("Spent", tower.spent)
@@ -604,6 +622,8 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 	model:SetAttribute("TowerId", id)
 	model:SetAttribute("UnitId", member.unitId)
 	model:SetAttribute("Trait", member.trait or "")
+	model:SetAttribute("UnitLevel", member.level or 1)
+	model:SetAttribute("Grades", (member.grades.d or "A") .. "," .. (member.grades.s or "A") .. "," .. (member.grades.r or "A"))
 	model:SetAttribute("Owner", self.player.UserId)
 
 	local gui = Instance.new("BillboardGui")
@@ -637,6 +657,32 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 	ring.CanQuery = false
 	ring.Parent = model
 
+	-- a cartoon outline, coloured for Legendary and Mythic units, and a sparkle aura on those
+	local rank = Rarities.Info[def.rarity].rank
+	local outline = Instance.new("Highlight")
+	outline.FillTransparency = 1
+	outline.OutlineTransparency = 0
+	outline.OutlineColor = rank >= 3 and Rarities.Info[def.rarity].color or Color3.fromRGB(20, 15, 30)
+	outline.DepthMode = Enum.HighlightDepthMode.Occluded
+	outline.Parent = model
+	if rank >= 3 then
+		local aura = Instance.new("ParticleEmitter")
+		aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		aura.Color = ColorSequence.new(Rarities.Info[def.rarity].color)
+		aura.LightEmission = 1
+		aura.Rate = rank >= 4 and 14 or 7
+		aura.Lifetime = NumberRange.new(0.8, 1.4)
+		aura.Speed = NumberRange.new(1.5, 3)
+		aura.SpreadAngle = Vector2.new(180, 180)
+		aura.Size = NumberSequence.new(0.6, 0)
+		aura.Parent = model.PrimaryPart
+		local glow = Instance.new("PointLight")
+		glow.Color = Rarities.Info[def.rarity].color
+		glow.Range = 10
+		glow.Brightness = 1.2
+		glow.Parent = model.PrimaryPart
+	end
+
 	model.Parent = self.towerFolder
 
 	local tower = {
@@ -645,6 +691,7 @@ function Battle:place(slot: number, position: Vector3): (boolean, string?)
 		unitId = member.unitId,
 		def = def,
 		trait = member.trait,
+		unit = { l = member.level, g = member.grades },
 		level = 0,
 		pos = pos,
 		model = model,
@@ -720,16 +767,50 @@ end
 
 -- ============================================================ waves
 
+local function waveDuration(wave): number
+	local spawnTime = 0
+	local boss = false
+	for _, g in wave.groups do
+		spawnTime = math.max(spawnTime, g.delay + g.interval * (g.count - 1))
+		if Enemies.ById[g.enemy].boss then
+			boss = true
+		end
+	end
+	return spawnTime + WAVE_SECONDS + (boss and BOSS_EXTRA_SECONDS or 0)
+end
+
+-- the wave bonus is paid when the next wave starts, together with every farm's payout
+function Battle:payWave()
+	local bonus = 100 + 20 * self.waveIndex
+	for _, tower in self.towers do
+		if tower.stats.farm > 0 then
+			bonus += math.floor(tower.stats.farm)
+			self:fx({ style = "cash", to = tower.pos + Vector3.new(0, tower.def.height + 1, 0), color = Color3.fromRGB(255, 215, 0), amount = math.floor(tower.stats.farm) })
+		end
+	end
+	self.cash += bonus
+end
+
+function Battle:canSkip(): boolean
+	return self.state == "wave" and #self.spawners == 0 and self.waveIndex < #self.waves
+end
+
+-- starts the next wave: from prep, when its timer runs out, or early (skip) once this wave has finished spawning
 function Battle:startNextWave(): boolean
-	if self.state ~= "prep" and self.state ~= "break" then
+	if self.state == "prep" then
+		self.state = "wave"
+	elseif not self:canSkip() and not (self.state == "wave" and self.timer <= 0 and self.waveIndex < #self.waves) then
 		return false
+	end
+	if self.waveIndex > 0 then
+		self:payWave()
 	end
 	self.waveIndex += 1
 	local wave = self.waves[self.waveIndex]
 	for _, g in wave.groups do
 		table.insert(self.spawners, { group = g, left = g.count, timer = g.delay, hpMult = wave.hpMult, bossMult = wave.bossMult })
 	end
-	self.state = "wave"
+	self.timer = waveDuration(wave)
 	self:sendState()
 	return true
 end
@@ -750,30 +831,12 @@ function Battle:runSpawners(dt: number)
 	self.spawners = active
 end
 
-function Battle:waveCleared()
-	local bonus = 100 + 20 * self.waveIndex
-	for _, tower in self.towers do
-		if tower.stats.farm > 0 then
-			bonus += math.floor(tower.stats.farm)
-			self:fx({ style = "cash", to = tower.pos + Vector3.new(0, tower.def.height + 1, 0), color = Color3.fromRGB(255, 215, 0), amount = math.floor(tower.stats.farm) })
-		end
-	end
-	self.cash += bonus
-	if self.waveIndex >= #self.waves then
-		self:finish(true)
-	else
-		self.state = "break"
-		self.timer = BREAK_SECONDS
-	end
-	self:sendState()
-end
-
 function Battle:step(dt: number)
 	if self.state == "won" or self.state == "lost" then
 		return
 	end
 	self.time += dt
-	if self.state == "prep" or self.state == "break" then
+	if self.state == "prep" then
 		self.timer -= dt
 		if self.timer <= 0 then
 			self:startNextWave()
@@ -785,8 +848,22 @@ function Battle:step(dt: number)
 		return
 	end
 	self:updateTowers(dt)
-	if self.state == "wave" and #self.spawners == 0 and #self.enemies == 0 then
-		self:waveCleared()
+	if self.state == "wave" then
+		local clear = #self.spawners == 0 and #self.enemies == 0
+		if self.waveIndex >= #self.waves then
+			if clear then
+				self:payWave()
+				self:finish(true)
+			end
+		else
+			self.timer -= dt
+			if clear and self.timer > CLEAR_SECONDS then
+				self.timer = CLEAR_SECONDS
+			end
+			if self.timer <= 0 then
+				self:startNextWave()
+			end
+		end
 	end
 end
 
@@ -817,6 +894,13 @@ function Battle:fx(payload: { [string]: any })
 end
 
 function Battle:snapshot()
+	local boss = nil
+	for _, e in self.enemies do
+		if e.alive and e.def.boss then
+			boss = { name = e.def.name, hp = math.max(0, math.floor(e.hp)), maxHp = math.floor(e.maxHp), immune = self.time < e.immuneUntil }
+			break
+		end
+	end
 	local team = {}
 	for i = 1, Units.TeamSize do
 		local m = self.team[i]
@@ -825,6 +909,8 @@ function Battle:snapshot()
 				uid = m.uid,
 				unitId = m.unitId,
 				trait = m.trait,
+				level = m.level,
+				grades = m.grades,
 				placed = self:towerCount(m.unitId),
 				cost = Stats.placeCost(m.unitId, m.trait),
 				allowed = rarityOk(self, m.unitId),
@@ -851,6 +937,9 @@ function Battle:snapshot()
 		units = self:towerCount(),
 		maxUnits = self.mods.maxUnits,
 		team = team,
+		canSkip = self:canSkip(),
+		lastWave = self.waveIndex >= #self.waves,
+		boss = boss,
 	}
 end
 
